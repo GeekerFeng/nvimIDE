@@ -1,6 +1,0 @@
-#ifndef SYSCMD_H
-#define SYSCMD_H
-
-int get_system_output(char *cmd, char *output, int size);
-
-#endif

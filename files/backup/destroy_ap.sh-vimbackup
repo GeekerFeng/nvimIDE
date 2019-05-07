@@ -1,2 +1,0 @@
-ifconfig ra0 down
-sleep 1

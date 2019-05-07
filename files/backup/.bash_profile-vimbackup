@@ -1,7 +1,0 @@
-#
-# ~/.bash_profile
-#
-
-[[ -f ~/.bashrc ]] && . ~/.bashrc
-
-export SVN_EDITOR="vim"

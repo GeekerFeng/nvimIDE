@@ -1,6 +1,0 @@
-
-echo "1"
-cd ../ 
-echo "2"
-exit 0
-echo "3"

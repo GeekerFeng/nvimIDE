@@ -1,6 +1,0 @@
-cp ./build/main  ./out
-cp -r ./oepc_aarch64/model ./out
-cp -r ./build/plugins ./out
-cp -r ./build/www ./out
-tar -cjf update.tar.bz2 ./out
-md5sum update.tar.bz2 | awk '{print $1}' > md5

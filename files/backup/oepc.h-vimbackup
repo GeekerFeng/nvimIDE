@@ -1,9 +1,0 @@
-#ifndef OEPC_H
-#define OEPC_H
-
-#include "../include/cache.h"
-
-int oepc(RecognitionStu *shm);
-
-
-#endif
