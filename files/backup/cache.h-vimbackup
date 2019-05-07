@@ -1,0 +1,41 @@
+#ifndef CACHE_H
+#define CACHE_H
+
+#include <stdbool.h>
+#include <stdint.h>
+#include <pthread.h>
+
+#if __cplusplus
+extern "C" {
+#endif
+
+#define IMAGE_WIDTH 320
+#define IMAGE_HEIGHT 240
+#define MAX_IMAGE_SIZE IMAGE_WIDTH * IMAGE_HEIGHT
+
+#define CAMERA_NUM 2
+#define MEM_SIZE sizeof(RecognitionStu)*CAMERA_NUM
+	
+#define VIDEO_PATH "/media/firefly/08A5-CD8E/"
+#define SHMKEY_PATH "./shm_key"
+
+#define IMAGE_SHM_ID 1
+#define SEND_SEM_ID 2
+#define RECO1_SEM_ID 3
+#define RECO2_SEM_ID 4
+
+typedef struct RecognitionStu{
+	pthread_mutex_t shareMtx;
+	unsigned int imagelen;
+	char imagebuf[MAX_IMAGE_SIZE];
+	uint16_t in_total;
+	uint16_t out_total;
+	bool people_change;
+	bool needSendPeople;
+}RecognitionStu;
+
+#if __cplusplus
+}
+#endif
+
+#endif

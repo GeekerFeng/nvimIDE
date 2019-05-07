@@ -1,0 +1,106 @@
+#define LOG_TAG "unpacked"
+
+#include "unpacked.h"
+#include "recvfun.h"
+#include <arpa/inet.h>
+#include <string.h>
+#include <elog.h>
+
+//传入去除tag数据
+uint16_t unpacked_reEscape(uint8_t *buf, uint16_t buflen)
+{
+	uint8_t bufTmp[PACKET_BODYMAXLEN] = {0};
+	uint16_t bufTmpLen = 0, len = 0;
+
+	do{
+		if(buf[len] == 0x7d)
+		{
+			if(buf[len+1] == 0x01)
+			{
+				bufTmp[bufTmpLen++] = 0x7d;
+				len +=2;
+			}
+			else if(buf[len+1] == 0x02)
+			{
+				bufTmp[bufTmpLen++] = 0x7e;
+				len +=2;
+			}
+		}
+		else
+		{
+			bufTmp[bufTmpLen++] = buf[len];
+			len +=1;
+		}
+	}while(len < buflen);
+
+	memcpy(buf, bufTmp, bufTmpLen);
+	return bufTmpLen;
+}
+
+uint16_t unpacked_getLen(uint8_t* buf)
+{
+	uint16_t attr;
+
+	attr = ntohs(*(uint16_t*)(buf+PACKET_HEADERIDLEN));
+	return attr & 0x1ff;
+}
+
+uint8_t* unpacked_getBody(uint8_t* buf)
+{
+	uint16_t attr = ntohs(*(uint16_t*)(buf+2));
+	if((attr & (0x01<<13)) == 0)
+	{
+		return buf+PACKET_HEADERLEN1;
+	}
+	else
+	{
+		return buf+PACKET_HEADERLEN2;
+	}
+}
+
+//bool unpacked_getStu(packetStu *packetbuf, uint8_t *buf, uint16_t bufLen)
+//{
+//	uint16_t len = 0,bodyLen = 0;
+//	struct packet_header headerTmp = {0};
+//
+//	//if(!unpacked_recv(socketfd, buf+len, PACKET_TAGLEN)) return false;
+//	//if(buf[len] != PACKET_TAG) return false;
+//	//len += PACKET_TAGLEN;
+//
+//	//if(!unpacked_recv(socketfd, buf+len, PACKET_HEADERIDLEN)) return false;
+//	headerTmp.packet_id = ntohs((uint16_t)(*(buf+len)));
+//	len+= PACKET_HEADERIDLEN;
+//
+//	//if(headerTmp.packet_id == UPDATE_TRANS_HANDLE)
+//	//{
+//	//	//if(!unpacked_recv(socketfd, buf+len, PACKET_HEADERLEN2 - PACKET_HEADERIDLEN)) return false;
+//	//	headerTmp.packet_attr = ntohs((uint16_t)(*(buf+len)));
+//	//	memcpy(headerTmp.IMEI, buf+len+2, IMEILEN);
+//	//	headerTmp.packet_num = ntohs((uint16_t)(*(buf+len+8)));
+//	//	headerTmp.packetiz.allnum = ntohs((uint16_t)(*(buf+len+10)));
+//	//	headerTmp.packetiz.num = ntohs((uint16_t)(*(buf+len+12)));
+//	//	len += PACKET_HEADERLEN2 - PACKET_TAGLEN;
+//	//}
+//	//else
+//	{
+//		//if(!unpacked_recv(socketfd, buf+len, PACKET_HEADERLEN1 - PACKET_HEADERIDLEN)) return false;
+//		headerTmp.packet_attr = ntohs((uint16_t)(*(buf+len)));
+//		memcpy(headerTmp.IMEI, buf+len+2, IMEILEN);
+//		headerTmp.packet_num = ntohs((uint16_t)(*(buf+len+8)));
+//		len += PACKET_HEADERLEN1 - PACKET_TAGLEN;
+//	}
+//
+//	bodyLen = headerTmp.packet_attr & 0x1ff;
+//
+//	//包长度校验
+//	if(len+bodyLen != bufLen) return false;
+//
+//	memcpy((uint8_t*)&packetbuf->header, (uint8_t*)&headerTmp, sizeof(struct packet_header));
+//
+//	//if(!unpacked_recv(socketfd, buf+len, bodyLen)) return false;
+//	memcpy(packetbuf->body, buf+len, bodyLen);
+//	len += bodyLen;
+//
+//	return true;
+//
+//}

@@ -47,6 +47,8 @@ set t_Co=256
 " color scheme
 set background=dark
 "color solarized
+color gruvbox 
+
 
 "color monokai
 "colors Tomorrow-Night-Eighties

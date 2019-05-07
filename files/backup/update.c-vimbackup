@@ -1,0 +1,70 @@
+#define LOG_TAG "update"
+
+#include "update.h"
+#include <unistd.h>
+#include <string.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <elog.h>
+
+static int s_update_fd;
+static bool s_update_state;
+
+bool update_state(void)
+{
+	return s_update_state;
+}
+
+bool update_start(void)
+{
+	if((s_update_fd = open(UPDATE_FILENAME, O_RDWR | O_CREAT)) == -1)
+	{
+		log_e("update file open fail:%s",strerror(errno));
+		return false;
+	}
+	s_update_state = true;
+	return true;
+}
+
+bool update_write(uint8_t* buf, uint16_t len)
+{
+	if(write(s_update_fd, buf,len) == -1)
+	{
+		log_e("update file write fail:%s",strerror(errno));
+		s_update_state = false;
+		return false;
+	}
+	return true;
+}
+
+bool update_check(uint32_t checkSum)
+{
+	return false;
+	uint8_t buf[512];
+	uint16_t bufLen;
+	uint32_t sum = 0;
+	lseek(s_update_fd, 0, SEEK_SET);
+
+	do
+	{
+		bufLen = read(s_update_fd, buf, 512);
+		for(int i=0;i<bufLen; i++)
+		{
+			sum += buf[i];
+		}
+	}while(bufLen == 0);
+
+	printf("checksum:%d,sum:%d\n",checkSum,sum);
+	if(checkSum == sum)return true;
+	else return false;
+}
+
+void update_end(void)
+{
+	s_update_state = false;
+	close(s_update_fd);
+}

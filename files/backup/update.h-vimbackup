@@ -1,0 +1,24 @@
+#ifndef UPDATE_H
+#define UPDATE_H
+
+#include <stdint.h>
+#include <stdbool.h>
+
+#define UPDATE_FILENAME  "./updatefile"
+
+typedef struct {
+	uint8_t upNum[8];
+	uint8_t upType[3];
+	uint8_t upId;
+	uint32_t upLen;
+	uint16_t upPackNum;
+	uint32_t upSum;
+}updateInfoStu;
+
+bool update_state(void);
+bool update_start(void);
+bool update_write(uint8_t* buf, uint16_t len);
+bool update_check(uint32_t checkSum);
+void update_end(void);
+
+#endif

@@ -1,0 +1,69 @@
+#!/bin/bash
+ftp -n <<EOF
+open 47.97.220.200
+user zhxq pass306
+binary
+cd apc-update
+lcd ./
+hash
+get md5
+close
+bye
+EOF
+
+if [ -f "./update.tar.bz2" ];then
+	SERVER_MD5=$(cat ./md5 |awk '{print $1}')
+	FILE_MD5=$(md5sum ./update.tar.bz2 | awk '{print $1}')
+	echo ${#SERVER_MD5}
+	echo ${#FILE_MD5}
+
+	SERVER_MD5=${SERVER_MD5: 0:32}
+	FILE_MD5=${FILE_MD5: 0:32}
+	echo $SERVER_MD5"x"
+	echo $FILE_MD5"x"
+else
+	SERVER_MD5=$(cat ./md5 |awk '{print $1}')
+	SERVER_MD5=${SERVER_MD5: 0:32}
+	FILE_MD5="2"
+fi
+
+
+if [ "$SERVER_MD5" != "$FILE_MD5" ]
+then
+	echo "download from ftp successfully"
+ftp -n <<EOF
+open 47.97.220.200
+user zhxq pass306
+binary
+cd apc-update
+lcd ./
+hash
+prompt off
+get update.tar.bz2
+close
+bye
+EOF
+	echo "download from ftp successfully"
+	
+	NEW_FILE_MD5=$(md5sum ./update.tar.bz2 | awk '{print $1}')
+	NEW_FILE_MD5=${NEW_FILE_MD5: 0:32}
+	echo $NEW_FILE_MD5"x"
+	echo $SERVER_MD5"x"
+
+	if [ "$SERVER_MD5" = "$NEW_FILE_MD5" ]
+	then
+		echo "tar file"
+		ps -aux |grep main |awk '{print $2}' |sudo xargs kill
+		tar -xjf update.tar.bz2
+#执行应用
+		cd out
+		nohup ./main &
+	else
+		echo "download error"
+	fi
+	
+else
+	echo "is already new"
+fi
+
+echo "END UPDATA"

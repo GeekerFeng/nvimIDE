@@ -1,0 +1,36 @@
+#ifndef SENDFUN_H
+#define SENDFUN_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+typedef bool (*sendneed)(time_t now);
+typedef uint16_t (*sendcmd)(uint8_t *sendbuf, uint16_t maxlen);
+
+typedef struct {
+	uint16_t cmd;
+	sendneed needfun;
+	sendcmd cmdfun;
+}sendfunStu;
+
+#define TERMINAL_REGISTER_CMD	0x0100
+#define TERMINAL_AUTH_CMD		0x0102
+#define TERMINAL_VERSION_CMD	0x0F00
+#define TERMINAL_GPS_CMD		0x0200
+#define TERMINAL_PEOPLE_CMD		0x0900
+#define CMAERA_PHOTO_RES		0x0805
+#define TERMINAL_MEDIA_CMD		0x0801
+#define PLATFORM_GETTXT_RES		0x0310
+#define TERMINAL_GETIP_CMD		0x0F05
+#define TERMINAL_UNIVERSAL_HANDLE	0x0001
+#define UPDATE_TRANS_CMD		0x0F02
+#define UPDATE_END_CMD			0x0F03
+
+#define SENDCMD_NUM 12
+
+
+
+
+void sendfunRun(void);
+
+#endif

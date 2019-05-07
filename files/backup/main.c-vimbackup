@@ -1,0 +1,405 @@
+#define _GNU_SOURCE
+
+#include <time.h>
+#include "oepc_main.h"
+#include "mjpg_streamer.h"
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <signal.h>
+#include <errno.h>
+
+#include <sys/prctl.h>
+#include <stropts.h>
+#include "cache.h"
+#include "net.h"
+#include "ioctl_cmd.h"
+#include "syscmd.h"
+#include "timer.h"
+
+#define _INPLUGIN_STR(devnum,width,height) "./plugins/input_uvc.so -n -d /dev/video" #devnum"  -r " #width"x" #height
+#define INPLUGIN_STR(devnum,width,heigth) _INPLUGIN_STR(devnum,width,heigth)
+
+enum ImageProcessStatus
+{
+	STOP,	//不运行
+	//TOSTOP, //停止运行
+	//TORUN,	//开始运行
+	RUN,	//正在运行
+};
+
+void* buf;
+RecognitionStu *recognition_shm;
+int gpio_fd;
+enum ImageProcessStatus image_process_flag[2]= {RUN,RUN};
+pid_t mjpg_pid,net_pid,image_pid;
+
+static int shm_id;
+//static int sem_reco[2];
+static bool isForkImage = false;
+
+
+int mjpg_argc = 7;
+char mjpg_name[] = "./mjpg_main";
+char mjpg_oflag[] = "-o";
+char mjpg_oarg[] = "./plugins/output_http.so -w ./www";
+
+char mjpg_iflag[] = "-i";
+char mjpg_iarg1[] = INPLUGIN_STR(0,IMAGE_WIDTH,IMAGE_HEIGHT);
+char mjpg_iarg2[] = INPLUGIN_STR(2,IMAGE_WIDTH,IMAGE_HEIGHT);
+
+char *mjpg_argv[] = {mjpg_name, mjpg_oflag, mjpg_oarg ,mjpg_iflag, mjpg_iarg1,mjpg_iflag,mjpg_iarg2};
+//char *mjpg_argv[] ={"./mjpg_main",\
+//	"-o", "./plugins/output_http.so -w ./www", \
+//	"-i", INPLUGIN_STR(5,IMAGE_WIDTH,IMAGE_HEIGHT), \
+//	"-i", INPLUGIN_STR(6,IMAGE_WIDTH,IMAGE_HEIGHT)  \
+//	};
+//
+
+void shm_init(int shm_id, key_t key)
+{
+	if((shm_id = shmget(key, MEM_SIZE, 0666|IPC_CREAT)) == -1){
+		printf("shmget error:%s",strerror(errno));
+		exit(-1);
+	}
+
+	if((buf = shmat(shm_id, NULL, 0)) == (void*)-1){
+		printf("shmat error:%s",strerror(errno));
+		exit(-1);
+	}
+
+	memset(buf, 0, MEM_SIZE);
+	recognition_shm = (RecognitionStu*)buf;
+}
+
+void mtx_init(void)
+{
+	pthread_mutexattr_t ma;
+
+	if(recognition_shm != NULL)
+	{
+		pthread_mutexattr_init(&ma);
+		pthread_mutexattr_setpshared(&ma, PTHREAD_PROCESS_SHARED);
+		pthread_mutexattr_setrobust(&ma, PTHREAD_MUTEX_ROBUST);
+		for(int i=0;i < CAMERA_NUM; i++)
+		{
+			pthread_mutex_init(&recognition_shm[i].shareMtx,&ma);
+		}
+
+	}
+}
+
+void mtx_del(void)
+{
+	for(int i=0;i < CAMERA_NUM; i++)
+	{
+		pthread_mutex_destroy(&recognition_shm[i].shareMtx);
+	}
+}
+
+void door_timer(void* arg)
+{
+	kill(image_pid, SIGTERM);
+	//kill(net_pid, SIGUSR1);
+	isForkImage = false;
+}
+
+void gpio_signal(int signame)      //有中断信号来了
+{
+	static int doorOccupy = 2;
+	static int timerNum = -1;
+	bool isDoorInt = false;
+	char buf[12];
+	int num = read(gpio_fd,buf,12);
+
+   	for(int i=0; i<12;i++)
+   	{
+   	    printf(" %d",buf[i]);
+   	}
+   	printf("\n");
+
+	for(int i=0; i<6; i++)
+	{
+		if(buf[i] == 1)
+		{
+			if(i == 0) //acc
+			{
+			}
+			else if(i == 1) //开前门
+			{
+				if(image_process_flag[0] == STOP) {
+					image_process_flag[0] = RUN;
+					doorOccupy++;
+					isDoorInt = true;
+				}
+			}
+			else if(i == 2) //关前门
+			{
+				if(image_process_flag[0] == RUN) {
+					image_process_flag[0] = STOP;
+					doorOccupy--;
+					isDoorInt = true;
+				}
+			}
+			else if(i == 3) //开后门
+			{
+				if(image_process_flag[1] == STOP) {
+					image_process_flag[1] = RUN;
+					doorOccupy++;
+					isDoorInt = true;
+				}
+			}
+			else if(i == 4) //关后门
+			{
+				if(image_process_flag[1] == RUN) {
+					image_process_flag[1] = STOP;
+					doorOccupy--;
+					isDoorInt = true;
+				}
+			}
+			else if(i == 5)
+			{
+			}
+
+		}
+	}
+
+	if(isDoorInt)
+	{
+		if(doorOccupy <= 0)
+		{
+			printf("start timer\n");
+			timerNum = timer_add(5, false, door_timer, NULL);
+			doorOccupy = 0;
+		}
+		else
+		{
+			if(timerNum != -1)
+			{
+				printf("del timer\n");
+				timer_del(timerNum);
+				timerNum = -1;
+			}
+		}
+	}
+}
+
+void uart485_recvMode(void)
+{
+	ioctl(gpio_fd, CTRL_485_RECV_CMD);
+}
+
+void uart485_sendMode(void)
+{
+	ioctl(gpio_fd, CTRL_485_SEND_CMD);
+}
+
+void gpio_init(void)
+{
+	char buf[12];
+	gpio_fd= open("/dev/gpio_ctrl",O_RDWR);
+
+    if(gpio_fd<0)
+    {
+        printf("open fail:%s",strerror(errno));
+        return ;
+    }
+
+    //ioctl(gpio_fd, CTRL_DISABLE_CAMMERA_CMD);
+    sleep(1);	//忽略之前遗留的所有中断
+    //ioctl(gpio_fd, CTRL_ENABLE_CAMMERA_CMD);
+    //sleep(10);	//等待摄像头初始化完成
+
+    fcntl(gpio_fd, F_SETOWN,getpid());
+    int oflag = fcntl(gpio_fd,F_GETFL);
+    fcntl(gpio_fd,F_SETFL,oflag|FASYNC);
+
+    read(gpio_fd,buf,12); //复位所有标志
+    signal(SIGIO,gpio_signal);
+
+}
+
+
+void camera_restart(void)
+{
+    ioctl(gpio_fd, CTRL_DISABLE_CAMMERA_CMD);
+    sleep(1);	//忽略之前遗留的所有中断
+    ioctl(gpio_fd, CTRL_ENABLE_CAMMERA_CMD);
+    sleep(10);	//等待摄像头初始化完成
+}
+
+void destroy(void)
+{
+	if(gpio_fd > 0)close(gpio_fd);
+
+	//清理子进程
+	//if(isForkImage == true)
+	//{
+	//	kill(image_pid, SIGTERM);
+	//}
+	//kill(mjpg_pid, SIGTERM);
+	//kill(net_pid, SIGTERM);
+
+	mtx_del();
+	//sem_del(sem_reco[0]);
+	//sem_del(sem_reco[1]);
+	if(shmdt(buf) == -1)
+	{
+		printf("shmdt failed");
+	}
+	//删除共享内存
+	if(shmctl(shm_id, IPC_RMID, 0) == -1)
+	{
+		printf("shmctl(IPC_RMID) failed");
+	}
+
+    printf("end process\n");
+    exit(0);
+}
+
+int main(void)
+{
+	key_t shm_key;
+	char video_path[2][20];
+
+	shm_key = ftok(".",IMAGE_SHM_ID);
+	shm_init(shm_id,shm_key);
+
+	//sem_init(&sem_reco[0],ftok(".", RECO1_SEM_ID));
+	//sem_init(&sem_reco[1],ftok(".", RECO2_SEM_ID));
+
+	mtx_init();
+	gpio_init();
+	timer_init();
+
+	//signal(SIGALRM, alrm_timer);
+	atexit(destroy);
+
+	for(int i=0; i<mjpg_argc; i++)
+	{
+		printf("%s\n",mjpg_argv[i]);
+	}
+
+	while(get_video_path(video_path, 2) != 2)
+	{
+		printf("have to connect two camera\n");
+		sleep(3);
+	}
+
+	for(int i= 0; i<2; i++)
+	{
+		printf("path=%s\n",video_path[i]);
+	}
+
+	for(int i=0; mjpg_argv[4][i] != '\0'; i++)
+	{
+		if(mjpg_argv[4][i]>= 0x30 && mjpg_argv[4][i] <= 0x39)
+		{
+			mjpg_argv[4][i] = video_path[0][10];
+			break;
+		}
+	}
+
+	for(int i=0; mjpg_argv[6][i] != '\0'; i++)
+	{
+		if(mjpg_argv[6][i]>= 0x30 && mjpg_argv[6][i] <= 0x39)
+		{
+			mjpg_argv[6][i] = video_path[1][10];
+			break;
+		}
+	}
+	//sprintf(mjpg_argv[4],INPLUGIN_STR(%d,IMAGE_WIDTH,IMAGE_HEIGHT),atoi(video_path[0]+10));
+	//sprintf(mjpg_argv[6],INPLUGIN_STR(%d,IMAGE_WIDTH,IMAGE_HEIGHT),atoi(video_path[1]+10));
+
+	for(int i=0; i<mjpg_argc; i++)
+	{
+		printf("%s\n",mjpg_argv[i]);
+	}
+
+
+	//process
+	net_pid = fork();
+	if(net_pid <0)
+	{
+		printf("fork net error:%s",strerror(errno));
+		exit(-1);
+	}
+	else if(net_pid == 0)
+	{
+		prctl(PR_SET_NAME, "apc_net", NULL, NULL, NULL); 
+		netProtocol((RecognitionStu *)buf);
+		exit(0);
+	}
+
+	mjpg_pid = fork();
+	if(mjpg_pid< 0)
+	{
+		printf("fork mjpg error:%s",strerror(errno));
+		exit(-1);
+	}
+	else if(mjpg_pid== 0)
+	{
+		prctl(PR_SET_NAME, "apc_mjpg", NULL, NULL, NULL); 
+		mjpg_main(mjpg_argc, mjpg_argv, buf);
+		exit(0);
+	}
+
+
+	//设置子进程运行的cpu核心
+	{
+		cpu_set_t mask;
+
+		CPU_ZERO(&mask);
+		CPU_SET(0,&mask);
+		CPU_SET(1,&mask);
+		CPU_SET(2,&mask);
+		CPU_SET(3,&mask);
+
+		if (sched_setaffinity(image_pid, sizeof(mask), &mask) == -1)//设置线程CPU亲和力
+        {
+			printf("warning: could not set image CPU affinity, continuing...\n");
+        }
+
+		if (sched_setaffinity(net_pid, sizeof(mask), &mask) == -1)//设置线程CPU亲和力
+        {
+			printf("warning: could not set net CPU affinity, continuing...\n");
+        }
+
+	}
+
+
+	while(1)
+	{
+		if(!isForkImage && (image_process_flag[0] == RUN || image_process_flag[1] == RUN))
+		{
+			image_pid = fork();
+			if(image_pid == 0)
+			{
+				printf("start oepc\n");
+				prctl(PR_SET_NAME, "apc_oepc", NULL, NULL, NULL); 
+				oepc_main((RecognitionStu *)buf);
+				_exit(0);
+			}
+			else
+			{
+				isForkImage = true;
+				waitpid(image_pid, NULL, 0);
+			}
+		}
+		else
+		{
+			usleep(1000); //应改成条件变量
+		}
+	}
+
+	return 0;
+
+
+}

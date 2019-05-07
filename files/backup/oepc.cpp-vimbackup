@@ -1,0 +1,275 @@
+// This project is powered by tencent ncnn.
+
+// Author: Peng Jin
+// Contact: 871461071 at qq.com
+// Organization: www.oetlink.com
+
+
+// Version: omit...
+
+// Version: 0.21
+// Date: 2018/12/11
+// Description: change from ncnn to Tengine and add head-track-dot
+
+// Version: omit...
+
+// Version: 0.5
+// Date: 2019/3/27
+// Description: change from Tengine count_version 0.43 to ncnn, two thread, image detect
+
+// Version: 0.51
+// Date: 2019/3/29
+// Description: video detect
+
+// Version: 0.52
+// Date: 2019/3/29
+// Description: passenger count
+
+
+#include <stdio.h>
+#include <vector>
+#include <unistd.h>
+#include <iostream>
+#include <sstream>
+#include <fstream>
+#include <iomanip>
+#include <string>
+#include <sys/time.h>
+#include <time.h>
+#include <thread>
+#include <memory>
+#include <mutex>
+#include <atomic>
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+
+#include <sys/types.h>
+#include <sys/stat.h>
+
+#include "platform.h"
+#include "net.h"
+
+#include "count.h"
+
+#include "oepc.h"
+#include "../include/sem.h"
+
+
+std::mutex mtx_show;
+
+static int run_thread(RecognitionStu *recognition_shm, bool if_save_video, bool if_show_image, std::string window_name)
+{
+	RecognitionStu recognition;
+
+	Count counter;
+
+	cv::Mat image;
+	int imagelentmp;
+
+	std::vector<Object> objects;
+	ncnn::Net mobilenet;
+	ncnn::Mat in;
+	ncnn::Mat out;
+	const int target_size = 300;
+	int img_w = IMAGE_WIDTH;//image.cols;
+	int img_h = IMAGE_HEIGHT;//image.rows;
+	const float mean_vals[3] = { 127.5f, 127.5f, 127.5f };
+	const float norm_vals[3] = { 1.0 / 127.5, 1.0 / 127.5, 1.0 / 127.5 };
+	static const char* class_names[] = { "background", "head", "head2", "head3", "head4" };
+
+	mobilenet.load_param("oepc.param");
+	mobilenet.load_model("oepc.bin");
+
+	std::cout << window_name << std::endl;
+	while (1)
+	{
+		sem_p(recognition_shm->semid);
+
+		if(recognition_shm->imagelen == 0)
+		{
+			std::cout << "buf empty\n";
+			continue;
+		}
+
+
+		{ //trans
+			memcpy(recognition.imagebuf, recognition_shm->imagebuf, recognition_shm->imagelen);
+			recognition.imagelen = recognition_shm->imagelen;
+
+			recognition_shm->imagelen = 0; //加载下一幅图片
+
+			cv::_InputArray pic_arr_1(recognition.imagebuf, recognition.imagelen);
+			image = cv::imdecode(pic_arr_1, CV_LOAD_IMAGE_COLOR);
+			//image= src_mat1(cv::Rect(0, 0, IMAGE_WIDTH, IMAGE_HEIGHT));
+
+		}
+
+
+		if (image.empty())
+		{
+			std::cout << "image empty" <<imagelentmp << "\n";
+			continue;
+		}
+
+		/////////////////////////////////extract_objects////////////////////////////////////////
+
+		in = ncnn::Mat::from_pixels_resize(image.data, ncnn::Mat::PIXEL_BGR, img_w, img_h, target_size, target_size);
+		//in = ncnn::Mat::from_pixels_resize((unsigned char*)recognition.imagebuf, ncnn::Mat::PIXEL_RGB, img_w, img_h, target_size, target_size);
+		in.substract_mean_normalize(mean_vals, norm_vals);
+		ncnn::Extractor ex = mobilenet.create_extractor();
+		//ex.set_num_threads(4);
+		ex.input("data", in);
+		ex.extract("detection_out", out);
+		//printf("out: %d %d %d\n", out.w, out.h, out.c);
+
+		objects.clear();
+		for (int i = 0; i<out.h; i++)
+		{
+			const float* values = out.row(i);
+
+			Object object;
+			object.label = values[0];
+			object.prob = values[1];
+			object.left_top_x = values[2] * img_w;
+			object.left_top_y = values[3] * img_h;
+			object.right_bottom_x = values[4] * img_w;
+			object.right_bottom_y = values[5] * img_h;
+			object.width = object.right_bottom_x - object.left_top_x;
+			object.height = object.right_bottom_y - object.left_top_y;
+			object.center_x = (object.right_bottom_x + object.left_top_x) / 2.0;
+			object.center_y = (object.right_bottom_y + object.left_top_y) / 2.0;
+			if (object.width > object.width)
+				object.radius = object.width / 2.0;
+			else
+				object.radius = object.height / 2.0;
+
+			objects.push_back(object);
+		}
+
+		/////////////////////////////////extract_objects////////////////////////////////////////
+
+
+
+		/////////////////////////////////post_process///////////////////////////////////////////
+
+		counter.passenger_count(objects);		//match and track
+
+		if (counter.people_change)
+		{
+			recognition_shm->people_change = true;
+			recognition_shm->in_total = counter.in_total;
+			recognition_shm->out_total = counter.out_total;
+
+			std::cout << window_name << "   in: " << counter.in_total << "   out: " << counter.out_total << "\n";
+		}
+
+		if (if_show_image)
+		{
+			/////////////////////////////////////////////////1:box and class/////////////////
+
+			for (size_t i = 0; i < objects.size(); i++)
+			{
+				const Object& obj = objects[i];
+
+				//fprintf(stderr, "%d = %.5f at %.2f %.2f %.2f x %.2f\n", obj.label, obj.prob, obj.rect.x, obj.rect.y, obj.rect.width, obj.rect.height);
+
+				cv::rectangle(image, cv::Rect(obj.left_top_x, obj.left_top_y, obj.width, obj.height), cv::Scalar(255, 255, 0), 2);
+
+				char text[256];
+				sprintf(text, "%s %.1f%%", class_names[obj.label], obj.prob * 100);
+
+				int baseLine = 0;
+				cv::Size label_size = cv::getTextSize(text, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
+
+				int x = obj.left_top_x;
+				int y = obj.left_top_y - label_size.height - baseLine;
+				if (y < 0) y = 0;
+				if (x + label_size.width > img_w) x = img_w - label_size.width;
+
+				cv::rectangle(image, cv::Rect(cv::Point(x, y), cv::Size(label_size.width, label_size.height + baseLine)), cv::Scalar(255, 255, 255), -1);
+
+				cv::putText(image, text, cv::Point(x, y + label_size.height), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0));
+			}
+
+			/////////////////////////////////////////////////1:box and class/////////////////
+
+
+
+			/////////////////////////////////////////////////2:tracks////////////////////////
+
+			for (auto each_track : counter.tracks)
+			{
+				Object pre_head = each_track.heads_in_this_track.front();
+
+				for (auto each_head : each_track.heads_in_this_track)
+				{
+					if (2 == each_track.track_type)		//valid tracks
+					{
+						cv::line(image, cv::Point(each_head.center_x, each_head.center_y), cv::Point(pre_head.center_x, pre_head.center_y), cv::Scalar(0, 255, 255), 10);
+						cv::circle(image, cv::Point(each_head.center_x, each_head.center_y), 10, cv::Scalar(0, 255, 255), -1);
+					}
+					else if (3 == each_track.track_type)	//invalid tracks
+					{
+						cv::line(image, cv::Point(each_head.center_x, each_head.center_y), cv::Point(pre_head.center_x, pre_head.center_y), cv::Scalar(100, 0, 0), 10);
+						cv::circle(image, cv::Point(each_head.center_x, each_head.center_y), 10, cv::Scalar(100, 0, 0), -1);
+					}
+					else if (1 == each_track.track_type)	//matching tracks
+					{
+						cv::line(image, cv::Point(each_head.center_x, each_head.center_y), cv::Point(pre_head.center_x, pre_head.center_y), cv::Scalar(0, 0, 255), 2);
+						cv::circle(image, cv::Point(each_head.center_x, each_head.center_y), 5, cv::Scalar(0, 255, 0), -1);
+					}
+
+					pre_head = each_head;
+				}
+			}
+
+			/////////////////////////////////////////////////2:tracks////////////////////////
+
+
+
+			/////////////////////////////////////////////////3:in and out people/////////////
+
+			std::string in = "in:" + std::to_string(counter.in_total);
+			std::string out = "out:" + std::to_string(counter.out_total);
+			cv::rectangle(image, cv::Rect(cv::Point(20, img_h - 95), cv::Size(140, 80)), cv::Scalar(0, 0, 0), -1);
+			cv::putText(image, in, cv::Point(30, img_h - 60), cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(255, 255, 255), 2);
+			cv::putText(image, out, cv::Point(30, img_h - 30), cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(255, 255, 255), 2);
+
+			/////////////////////////////////////////////////3:in and out people/////////////
+
+			mtx_show.lock();
+			cv::imshow(window_name, image);
+			cv::waitKey(1);
+			mtx_show.unlock();
+		}
+
+		/////////////////////////////////post_process///////////////////////////////////////////
+	}
+
+	return 0;
+}
+
+
+
+int oepc(RecognitionStu *shm)
+{
+
+	bool if_show_image = true;
+	bool if_save_video = false;
+	std::string window_name_1 = "output_1";
+	std::string window_name_2 = "output_2";
+
+
+	std::thread *thread_1 = new std::thread(run_thread, &shm[0], if_save_video, if_show_image, window_name_1);
+	std::thread *thread_2 = new std::thread(run_thread, &shm[1], if_save_video, if_show_image, window_name_2);
+
+	thread_1->join();
+	thread_2->join();
+
+	delete thread_1;
+	delete thread_2;
+
+	return 0;
+}
+

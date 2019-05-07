@@ -1,0 +1,452 @@
+#define LOG_TAG "sendneed"
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include "sendneed.h"
+#include "sendfun.h"
+#include "net.h"
+#include "sem.h"
+#include <elog.h>
+
+static needCmdStu s_need_cmd;
+
+void sendneedInit(void)
+{
+	s_need_cmd.Register.cmd = TERMINAL_REGISTER_CMD;
+	s_need_cmd.Auth.cmd		= TERMINAL_AUTH_CMD;
+	s_need_cmd.Version.cmd  = TERMINAL_VERSION_CMD;
+	s_need_cmd.Gps.cmd		= TERMINAL_GPS_CMD;
+	s_need_cmd.People.cmd	= TERMINAL_PEOPLE_CMD;
+	s_need_cmd.Photo.cmd	= CMAERA_PHOTO_RES;
+	s_need_cmd.Media.cmd	= TERMINAL_MEDIA_CMD;
+	s_need_cmd.GetTxt.cmd	= PLATFORM_GETTXT_RES;
+	s_need_cmd.GetIP.cmd	= TERMINAL_GETIP_CMD;
+	s_need_cmd.Universal.cmd	= TERMINAL_UNIVERSAL_HANDLE;
+	s_need_cmd.UpdateTrans.cmd	= UPDATE_TRANS_CMD;
+	s_need_cmd.UpdateEnd.cmd	= UPDATE_END_CMD;
+}
+
+bool sendneedSetCmd(uint16_t cmd)
+{
+	bool res = false;
+
+	struct needArg *needList;
+	needList = (struct needArg*)&s_need_cmd;
+	for(int i=0; i< (sizeof(needCmdStu)/sizeof(struct needArg)); i++)
+	{
+		if(needList[i].cmd == cmd)
+		{
+			needList[i].need = true;
+			needList[i].lastTime = 0;
+			needList[i].sendCount = 0;
+			res = true;
+			break;
+		}
+	}
+
+	if(res)
+	{
+		sem_v(g_sendSemid);
+	}
+	return res;
+}
+
+bool sendneedClearCmd(uint16_t cmd)
+{
+	bool res = false;
+
+	struct needArg *needList;
+	needList = (struct needArg*)&s_need_cmd;
+	for(int i=0; i< (sizeof(needCmdStu)/sizeof(struct needArg)); i++)
+	{
+		if(needList[i].cmd == cmd)
+		{
+			needList[i].need = false;
+			res = true;
+			break;
+		}
+	}
+
+	return res;
+}
+
+bool sendneedSetCmdArg(uint16_t cmd, uint8_t* ptr, uint16_t len)
+{
+	bool res = false;
+
+	struct needArg *needList;
+	needList = (struct needArg*)&s_need_cmd;
+	for(int i=0; i< (sizeof(needCmdStu)/sizeof(struct needArg)); i++)
+	{
+		if(needList[i].cmd == cmd)
+		{
+			pthread_mutex_init(&needList[i].mtx, NULL);
+			needList[i].arg = ptr;
+			needList[i].len = len;
+			res = true;
+			break;
+		}
+	}
+
+	return true;
+}
+
+uint16_t sendneedGetCmdArg(uint16_t cmd, uint8_t **out_ptr)
+{
+	struct needArg *needList;
+	needList = (struct needArg*)&s_need_cmd;
+	for(int i=0; i< (sizeof(needCmdStu)/sizeof(struct needArg)); i++)
+	{
+		if(needList[i].cmd == cmd)
+		{
+			*out_ptr = needList[i].arg;
+			return needList[i].len;
+		}
+	}
+
+	return 0;
+}
+
+void sendneedClearCmdArg(uint16_t cmd)
+{
+	struct needArg *needList;
+	needList = (struct needArg*)&s_need_cmd;
+	for(int i=0; i< (sizeof(needCmdStu)/sizeof(struct needArg)); i++)
+	{
+		if(needList[i].cmd == cmd)
+		{
+			free(needList[i].arg);
+			pthread_mutex_destroy(&needList[i].mtx);
+			needList[i].arg = NULL;
+			needList[i].len = 0;
+		}
+	}
+}
+
+bool sendneedSemBlock(void)
+{
+	struct needArg *checkneed;
+	checkneed = (struct needArg*)&s_need_cmd;
+	for(int i=0; i< (sizeof(needCmdStu)/sizeof(struct needArg)); i++)
+	{
+		if(checkneed[i].need)
+		{
+			return false;
+		}
+	}
+
+	return true;
+
+}
+
+bool sendneedArgLock(char* arg)
+{
+	struct needArg *needList;
+	needList = (struct needArg*)&s_need_cmd;
+	for(int i=0; i< (sizeof(needCmdStu)/sizeof(struct needArg)); i++)
+	{
+		if(needList[i].arg == arg)
+		{
+			pthread_mutex_lock(&needList[i].mtx);
+			break;
+		}
+	}
+
+	return true;
+}
+
+bool sendneedArgUnlock(char* arg)
+{
+	struct needArg *needList;
+	needList = (struct needArg*)&s_need_cmd;
+	for(int i=0; i< (sizeof(needCmdStu)/sizeof(struct needArg)); i++)
+	{
+		if(needList[i].arg == arg)
+		{
+			pthread_mutex_unlock(&needList[i].mtx);
+			break;
+		}
+	}
+
+	return true;
+}
+
+
+
+bool sendneedRegisterCmd(time_t nowtime)
+{
+
+	if(s_need_cmd.Register.sendCount >= RESEND_COUNT)
+	{
+		s_need_cmd.Register.need = false;
+	}
+
+	if(s_need_cmd.Register.need)
+	{
+		if((nowtime - s_need_cmd.Register.lastTime) >= SOCKET_TIMEOUT)
+		{
+			log_d("need register:%d,%ld,%ld",s_need_cmd.Register.need, nowtime ,s_need_cmd.Register.lastTime);
+			s_need_cmd.Register.lastTime = nowtime;
+			s_need_cmd.Register.sendCount++;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool sendneedAuthCmd(time_t nowtime)
+{
+
+	if(s_need_cmd.Auth.sendCount >= RESEND_COUNT)
+	{
+		s_need_cmd.Auth.need = false;
+	}
+
+	if(s_need_cmd.Auth.need)
+	{
+		if((nowtime - s_need_cmd.Auth.lastTime) >= SOCKET_TIMEOUT)
+		{
+			s_need_cmd.Auth.lastTime = nowtime;
+			s_need_cmd.Auth.sendCount++;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool sendneedVersionCmd(time_t nowtime)
+{
+
+	if(s_need_cmd.Version.sendCount >= RESEND_COUNT)
+	{
+		s_need_cmd.Version.need = false;
+	}
+
+	if(s_need_cmd.Version.need)
+	{
+		if((nowtime - s_need_cmd.Version.lastTime) >= SOCKET_TIMEOUT)
+		{
+			s_need_cmd.Version.lastTime = nowtime;
+			s_need_cmd.Version.sendCount++;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool sendneedGpsCmd(time_t nowtime)
+{
+
+	if(!g_loginSuccess)
+	{
+		return false;
+	}
+
+	if(s_need_cmd.Gps.sendCount >= RESEND_COUNT)
+	{
+		s_need_cmd.Gps.need = false;
+	}
+
+	if(s_need_cmd.Gps.need)
+	{
+		if((nowtime - s_need_cmd.Gps.lastTime) >= GPS_REPORTTIME)
+		{
+			s_need_cmd.Gps.lastTime = nowtime;
+			s_need_cmd.Gps.sendCount++;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool sendneedPeopleCmd(time_t nowtime)
+{
+
+	if(!g_loginSuccess)
+	{
+		return false;
+	}
+
+	if(s_need_cmd.People.sendCount >= RESEND_COUNT)
+	{
+		s_need_cmd.People.need = false;
+	}
+
+	if(s_need_cmd.People.need)
+	{
+		if((nowtime - s_need_cmd.People.lastTime) >= SOCKET_TIMEOUT)
+		{
+			s_need_cmd.People.lastTime = nowtime;
+			s_need_cmd.People.sendCount++;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool sendneedPhotoRes(time_t nowtime)
+{
+
+	if(!g_loginSuccess)
+	{
+		return false;
+	}
+
+	if(s_need_cmd.Photo.sendCount >= RESEND_COUNT)
+	{
+		s_need_cmd.Photo.need = false;
+	}
+
+	if(s_need_cmd.Photo.need)
+	{
+		if((nowtime - s_need_cmd.Photo.lastTime) >= SOCKET_TIMEOUT)
+		{
+			s_need_cmd.Photo.lastTime = nowtime;
+			s_need_cmd.Photo.sendCount++;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool sendneedMediaCmd(time_t nowtime)
+{
+
+	if(!g_loginSuccess)
+	{
+		return false;
+	}
+
+	if(s_need_cmd.Media.sendCount >= RESEND_COUNT)
+	{
+		s_need_cmd.Media.need = false;
+	}
+
+	if(s_need_cmd.Media.need)
+	{
+		if((nowtime - s_need_cmd.Media.lastTime) >= SOCKET_TIMEOUT)
+		{
+			s_need_cmd.Media.lastTime = nowtime;
+			s_need_cmd.Media.sendCount++;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool sendneedGetTxtRes(time_t nowtime)
+{
+
+	if(!g_loginSuccess)
+	{
+		return false;
+	}
+
+	if(s_need_cmd.GetTxt.sendCount >= RESEND_COUNT)
+	{
+		s_need_cmd.GetTxt.need = false;
+	}
+
+	if(s_need_cmd.GetTxt.need)
+	{
+		if((nowtime - s_need_cmd.GetTxt.lastTime) >= SOCKET_TIMEOUT)
+		{
+			s_need_cmd.GetTxt.lastTime = nowtime;
+			s_need_cmd.GetTxt.sendCount++;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool sendneedGetIPCmd(time_t nowtime)
+{
+
+	if(s_need_cmd.GetIP.sendCount >= RESEND_COUNT)
+	{
+		s_need_cmd.GetIP.need = false;
+	}
+
+	if(s_need_cmd.GetIP.need)
+	{
+		if((nowtime - s_need_cmd.GetIP.lastTime) >= SOCKET_TIMEOUT)
+		{
+			s_need_cmd.GetIP.lastTime = nowtime;
+			s_need_cmd.GetIP.sendCount++;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool sendneedUniversalCmd(time_t nowtime)
+{
+
+	if(s_need_cmd.Universal.sendCount >= RESEND_COUNT)
+	{
+		s_need_cmd.Universal.need = false;
+	}
+
+	if(s_need_cmd.Universal.need)
+	{
+		if((nowtime - s_need_cmd.Universal.lastTime) >= SOCKET_TIMEOUT)
+		{
+			s_need_cmd.Universal.lastTime = nowtime;
+			s_need_cmd.Universal.sendCount++;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool sendneedUpdateTransCmd(time_t nowtime)
+{
+
+	if(s_need_cmd.UpdateTrans.sendCount >= RESEND_COUNT)
+	{
+		s_need_cmd.UpdateTrans.need = false;
+	}
+
+	if(s_need_cmd.UpdateTrans.need)
+	{
+		if((nowtime - s_need_cmd.UpdateTrans.lastTime) >= SOCKET_TIMEOUT)
+		{
+			s_need_cmd.UpdateTrans.lastTime = nowtime;
+			s_need_cmd.UpdateTrans.sendCount++;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool sendneedUpdateEndCmd(time_t nowtime)
+{
+
+	if(s_need_cmd.UpdateEnd.sendCount >= RESEND_COUNT)
+	{
+		s_need_cmd.UpdateEnd.need = false;
+	}
+
+	if(s_need_cmd.UpdateEnd.need)
+	{
+		if((nowtime - s_need_cmd.UpdateEnd.lastTime) >= SOCKET_TIMEOUT)
+		{
+			s_need_cmd.UpdateEnd.lastTime = nowtime;
+			s_need_cmd.UpdateEnd.sendCount++;
+			return true;
+		}
+	}
+
+	return false;
+}

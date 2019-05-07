@@ -1,0 +1,9 @@
+SRC=../../../tmp/Proj_2019.03.13_APC_MCU/apc3.1-sdk/kernel/$1
+DST=$1
+DST=${DST%/*}
+
+echo $SRC
+echo $DST
+
+read  num
+cp $SRC $DST

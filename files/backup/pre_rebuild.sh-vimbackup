@@ -1,0 +1,17 @@
+cd ../mjpg-streamer/_build
+pwd
+make
+cd ../../oepc_aarch64/build
+pwd
+make
+cd ../../build
+pwd
+rm plugins/*
+rm ../lib/*
+cp ../mjpg-streamer/_build/plugins/input_uvc/input_uvc.so plugins/
+cp ../mjpg-streamer/_build/plugins/output_http/output_http.so plugins/
+cp ../mjpg-streamer/_build/libmjpg_streamer.a ../lib/
+cp ../oepc_aarch64/build/liboepc.a ../lib/
+cp ../oepc_aarch64/lib/libncnn.a ../lib/
+rm main
+make

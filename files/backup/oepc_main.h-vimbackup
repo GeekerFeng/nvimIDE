@@ -1,0 +1,16 @@
+#ifndef OEPC_H
+#define OEPC_H
+
+#include "../include/cache.h"
+
+
+#ifdef __cplusplus
+extern "C"{
+#endif
+//int oepc_main(RecognitionStu *shm);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

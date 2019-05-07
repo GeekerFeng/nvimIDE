@@ -1,0 +1,54 @@
+#include <stdio.h>
+#include <pthread.h>
+#include <unistd.h>
+
+struct{
+	pthread_mutex_t mutex;
+	pthread_cond_t cond;
+	int data;
+}shareDate;
+
+void* produce(void *arg)
+{
+	while(1)
+	{
+	sleep(2);
+
+	pthread_mutex_lock(&shareDate.mutex);
+	printf("produce\n");
+	shareDate.data++;
+	pthread_mutex_unlock(&shareDate.mutex);
+
+	pthread_cond_signal(&shareDate.cond);
+	}
+}
+
+void* consume(void *arg)
+{
+	while(1)
+	{
+
+	pthread_mutex_lock(&shareDate.mutex);
+	pthread_cond_wait(&shareDate.cond, &shareDate.mutex);
+	printf("consume\n");
+	printf("%d\n", shareDate.data);
+	pthread_mutex_unlock(&shareDate.mutex);
+
+	sleep(1);
+	}
+}
+
+int main(void)
+{
+	pthread_t tid1,tid2;
+
+	pthread_mutex_init(&shareDate.mutex, NULL);
+	pthread_cond_init(&shareDate.cond, NULL);
+
+	pthread_create(&tid1, NULL, consume,NULL);
+	pthread_create(&tid1, NULL, produce,NULL);
+
+	pthread_join(tid1, NULL);
+	pthread_join(tid2, NULL);
+
+}

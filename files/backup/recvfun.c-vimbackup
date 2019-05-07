@@ -1,0 +1,298 @@
+#define LOG_TAG "recvfun"
+#define _DEFAULT_SOURCE
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include "bcd.h"
+#include "recvfun.h"
+#include "sendfun.h"
+#include "unpacked.h"
+#include "net.h"
+#include "sendneed.h"
+#include <elog.h>
+#include <arpa/inet.h>
+#include <time.h>
+#include "update.h"
+
+static void recvfunRegisterHandle(uint8_t* recvbuf, uint16_t len);
+static void recvfunUniversalHandle(uint8_t* recvbuf, uint16_t len);
+static void recvfunTimeHandle(uint8_t* recvbuf, uint16_t len);
+static void recvfunPhotoHandle(uint8_t* recvbuf, uint16_t len);
+static void recvfunTxtHandle(uint8_t* recvbuf, uint16_t len);
+static void recvfunGetTxtHandle(uint8_t* recvbuf, uint16_t len);
+static void recvfunGetIPHandle(uint8_t* recvbuf, uint16_t len);
+static void recvfunUpdateStartHandle(uint8_t* recvbuf, uint16_t len);
+static void recvfunUpdateTransHandle(uint8_t* recvbuf, uint16_t len);
+
+static recvfunStu s_recvfun_handle[] = {
+	{TERMINAL_REGISTER_HANDLE, recvfunRegisterHandle},
+	{PLATFORM_UNIVERSAL_HANDLE, recvfunUniversalHandle},
+	{PLATFORM_TIME_HANDLE, recvfunTimeHandle},
+	{CMAERA_PHOTO_HANDLE, recvfunPhotoHandle},
+	{PLATFORM_TXT_HANDLE, recvfunTxtHandle},
+	{PLATFORM_GETTXT_HANDLE, recvfunGetTxtHandle},
+	{TERMINAL_GETIP_HANDLE, recvfunGetIPHandle},
+	{UPDATE_START_HANDLE, recvfunUpdateStartHandle},
+	{UPDATE_TRANS_HANDLE, recvfunUpdateTransHandle},
+};
+
+void recvfunRegisterHandle(uint8_t* recvbuf, uint16_t len)
+{
+	log_d("recv Register");
+
+	uint8_t *auth_ptr = NULL;
+	uint16_t auth_len = 0;
+	uint8_t *body = unpacked_getBody(recvbuf);
+
+	log_d("register result:%d",body[2]);
+	if(body[2] == 0)
+	{
+		auth_len = unpacked_getLen(recvbuf);
+		log_d("register auth len :%d", auth_len);
+
+		auth_ptr = malloc(auth_len);
+		memcpy(auth_ptr, body+3, auth_len);
+		log_d("register auth ptr :%p", auth_ptr);
+		elog_hexdump("authrecv",16,auth_ptr,auth_len);
+
+		sendneedSetCmdArg(TERMINAL_AUTH_CMD, auth_ptr, auth_len);
+	}
+
+	sendneedClearCmd(TERMINAL_REGISTER_CMD);
+	sendneedSetCmd(TERMINAL_AUTH_CMD);
+}
+
+void recvfunUniversalHandle(uint8_t* recvbuf, uint16_t len)
+{
+	log_d("recv Universal");
+
+	uint8_t *body = unpacked_getBody(recvbuf);
+	uint16_t cmd = 0;
+
+	cmd = ntohs(*(uint16_t*)(body+2));
+	log_d("universal result:%d cmd:%04x",body[4],cmd);
+	if(body[4] == 0)
+	{
+		if(cmd == TERMINAL_AUTH_CMD)
+		{
+			log_d("auth success");
+			sendneedClearCmdArg(TERMINAL_AUTH_CMD);
+			sendneedClearCmd(TERMINAL_AUTH_CMD);
+			sendneedSetCmd(TERMINAL_VERSION_CMD); //上传软件版本
+		}
+		else if(cmd == TERMINAL_GPS_CMD)
+		{
+			log_d("gps success");
+			sendneedClearCmd(TERMINAL_GPS_CMD); //一直上传GPS信息
+
+			//sendneedSetCmd(TERMINAL_PEOPLE_CMD); //测试上传人数信息
+
+		}
+		else if(cmd == TERMINAL_PEOPLE_CMD)
+		{
+			uint16_t *people;
+			log_d("People success");
+			sendneedClearCmd(TERMINAL_PEOPLE_CMD);
+			sendneedGetCmdArg(TERMINAL_PEOPLE_CMD, (uint8_t**)&people);
+
+			sendneedArgLock((char*)people);
+			people[0] = 0;
+			people[1] = 0;
+			people[2] = 0;
+			people[3] = 0;
+			sendneedArgUnlock((char*)people);
+		}
+		else if(cmd == UPDATE_END_CMD)
+		{
+			log_i("update end");
+			sendneedClearCmd(UPDATE_END_CMD);
+			sendneedClearCmdArg(UPDATE_END_CMD);
+			update_end();
+		}
+
+
+	}
+}
+
+
+void recvfunTimeHandle(uint8_t* recvbuf, uint16_t len)
+{
+	log_d("recv time");
+
+	uint8_t *body = unpacked_getBody(recvbuf);
+	time_t servertime;
+	time_t now;
+
+	bcd2time(&servertime, body);
+
+	now = time(NULL);
+	log_d("now:%ld",now);
+	log_d("server:%ld",servertime);
+
+	//if(stime(&servertime) == -1)
+	//{
+	//	log_e("set time error:%s",strerror(errno));
+	//}
+
+	sendneedClearCmd(TERMINAL_VERSION_CMD);
+	g_loginSuccess = true;
+	//sendneedSetCmd(TERMINAL_GPS_CMD);
+
+}
+
+void recvfunPhotoHandle(uint8_t* recvbuf, uint16_t len)
+{
+	log_d("recv Photo");
+}
+
+void recvfunTxtHandle(uint8_t* recvbuf, uint16_t len)
+{
+	log_d("recv txt");
+}
+
+void recvfunGetTxtHandle(uint8_t* recvbuf, uint16_t len)
+{
+	log_d("recv GetTxt");
+}
+
+void recvfunGetIPHandle(uint8_t* recvbuf, uint16_t len)
+{
+	log_d("recv GetIP");
+
+	uint8_t *body = unpacked_getBody(recvbuf);
+	char ip[17];
+	uint16_t port;
+
+	sprintf(ip,"%d.%d.%d.%d",body[0],body[1],body[2],body[3]);
+	log_d("%d.%d.%d.%d",body[0],body[1],body[2],body[3]);
+	//port = body[4]*256 + body[5];
+	port = SERVER_PORT; //测试服务器返回错误暂时用这个
+
+
+	net_socketClose();
+	if(net_socketConnect(ip,port))
+	{
+		log_d("connect new server success");
+	}
+
+	sendneedClearCmd(TERMINAL_GETIP_CMD);
+	sendneedSetCmd(TERMINAL_REGISTER_CMD);
+
+}
+
+void recvfunUpdateStartHandle(uint8_t* recvbuf, uint16_t len)
+{
+	log_d("recv UpdateStart");
+
+	uint16_t *univerRes;
+	uint8_t *body = unpacked_getBody(recvbuf);
+	u_int16_t index = 0;
+	updateInfoStu* updateInfo;
+
+	univerRes = malloc(sizeof(uint16_t)*3);
+	memset(univerRes, 0, sizeof(uint16_t)*3);
+
+	univerRes[0] = ntohs(*(uint16_t*)(recvbuf+10));
+	univerRes[1] = ntohs(*(uint16_t*)(recvbuf+0));
+	univerRes[2] = 0;
+	if(update_state() == false) //未在升级状态 开始升级
+	{
+		updateInfo = malloc(sizeof(updateInfoStu));
+		memset(updateInfo, 0, sizeof(updateInfoStu));
+
+		memcpy(updateInfo->upNum, body+index, 8); //升级流水号
+		index += 8;
+		memcpy(updateInfo->upType, body+index, 3); //升级类型
+		index += 3;
+
+		updateInfo->upId = body[index++]; //文件ID
+		updateInfo->upLen = ntohl(*(uint32_t*)(body+index)); //文件长度
+		index += 4;
+		updateInfo->upSum = ntohl(*(uint32_t*)(body+index)); //文件校验值
+		index += 4;
+
+		updateInfo->upPackNum = 1;
+
+		if(updateInfo->upType[0]=='A' && updateInfo->upType[1]=='P' && updateInfo->upType[2]=='C' \
+				&& updateInfo->upId == 1 \
+				&& updateInfo->upLen < UPDATE_FILEMAXSIZE)
+		{
+			if(update_start())
+			{
+				log_i("update start");
+				log_i("id:%d,len:%d,checksum:%d",updateInfo->upId, updateInfo->upLen, updateInfo->upSum);
+
+				sendneedSetCmdArg(UPDATE_TRANS_CMD, (char*)updateInfo, sizeof(updateInfoStu));
+				univerRes[2] = 1;
+				sendneedSetCmdArg(TERMINAL_UNIVERSAL_HANDLE, (char*)univerRes, sizeof(uint16_t)*3);
+			}
+		}
+		else
+		{
+			log_i("update start fail");
+			free(updateInfo);
+		}
+	}
+
+	sendneedSetCmd(TERMINAL_UNIVERSAL_HANDLE);
+
+}
+
+void recvfunUpdateTransHandle(uint8_t* recvbuf, uint16_t len)
+{
+	log_d("recv UpdateTrans");
+	uint8_t upNum[8];
+	uint16_t upPackNum,upPackLen;
+	updateInfoStu *updateInfo;
+	uint8_t *body = unpacked_getBody(recvbuf);
+	uint16_t bodyLen = 0;
+
+	sendneedClearCmd(UPDATE_TRANS_CMD);
+
+	memcpy(upNum, body+bodyLen, 8);
+	bodyLen += 8;
+	upPackNum = ntohs(*(uint16_t*)(body+bodyLen));
+	bodyLen += 2;
+	upPackLen = ntohs(*(uint16_t*)(body+bodyLen));
+	bodyLen += 2;
+
+	sendneedGetCmdArg(UPDATE_TRANS_CMD,(uint8_t**)&updateInfo);
+	sendneedArgLock((char*)updateInfo);
+
+	if(!memcmp(updateInfo->upNum, upNum, 8) && upPackNum == updateInfo->upPackNum)
+	{
+		update_write(body+bodyLen, upPackLen);
+		updateInfo->upPackNum++;
+		updateInfo->upLen -= upPackLen;
+
+		log_i("update recv:packNum:%d,len:%d,last_len:%d", upPackNum, upPackLen, updateInfo->upLen);
+
+		if(updateInfo->upLen > 0)
+		{
+			sendneedSetCmd(UPDATE_TRANS_CMD);
+		}
+		else
+		{
+			sendneedSetCmd(UPDATE_END_CMD);
+		}
+	}
+	sendneedArgUnlock((char*)updateInfo);
+
+
+}
+
+void recvfunRun(uint16_t cmd)
+{
+	for(uint16_t i = 0; i< (sizeof(s_recvfun_handle)/sizeof(recvfunStu)); i++)
+	{
+		if(s_recvfun_handle[i].cmd == cmd)
+		{
+			//elog_hexdump("recv",16,g_recvBuf,g_recvNum-1);
+			s_recvfun_handle[i].recvfun(g_recvBuf, g_recvNum-1);
+			break;
+		}
+
+	}
+}

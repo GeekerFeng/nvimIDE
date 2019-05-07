@@ -1,0 +1,196 @@
+#define LOG_TAG "gps"
+#define _XOPEN_SOURCE
+
+#include "gps.h"
+#include "sendneed.h"
+#include "sendfun.h"
+#include "bcd.h"
+#include "net.h"
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <math.h>
+#include <elog.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+#define MAX_GPSREADSIZE 128
+#define GPS_DELIM ","
+
+static gpsInfoStu s_gpsInfo;
+static int s_gps_fd;
+
+static uint8_t s_readbuf[MAX_GPSREADSIZE];
+static uint16_t s_readbufLen;
+
+
+void gps_init(void)
+{
+	s_gps_fd = open("/dev/ttysWK3", O_RDONLY);
+	if(s_gps_fd == -1)
+	{
+		log_e("open gps uart fail:%s",strerror(errno));
+	}
+	sendneedSetCmdArg(TERMINAL_GPS_CMD, (uint8_t*)&s_gpsInfo, sizeof(gpsInfoStu));
+
+}
+
+static void gps_unRMC(uint8_t *buf)
+{
+	char *p = NULL;
+	int i =0;
+	char timestr[3] = {0};
+	struct tm _tm = {0};
+
+	sendneedArgLock((char*)&s_gpsInfo);
+	for(p=strtok((char*)buf, GPS_DELIM); p!=NULL; p=strtok(NULL, GPS_DELIM),i++)
+	{
+		switch(i)
+		{
+			case 1:
+				memcpy((char*)timestr, p, 2);
+				_tm.tm_hour = atoi(timestr);
+				memcpy((char*)timestr, p+2, 2);
+				_tm.tm_min = atoi(timestr);
+				memcpy((char*)timestr, p+4, 2);
+				_tm.tm_sec = atoi(timestr);
+				break;
+			case 2:
+				if(p[0] == 'A'){
+					s_gpsInfo.location = true;
+				}
+				else{
+					s_gpsInfo.location = false;
+				}
+				break;
+			case 3:
+				{
+				double latitude = atof(p);
+				uint16_t degrees = ((int)latitude/100);
+				latitude = degrees+(latitude - degrees*100)/60;
+
+				s_gpsInfo.latitude = latitude*pow(10,6);
+				//s_gpsInfo.latitude = 30.29733*pow(10,6);
+				//log_i("la:%d",s_gpsInfo.latitude); 
+				}
+				break;
+			case 4:
+				s_gpsInfo.NS = p[0];
+				break;
+			case 5:
+				{
+				double longitude= atof(p);
+				uint16_t degrees = ((int)longitude/100);
+				longitude = degrees+(longitude- degrees*100)/60;
+
+				s_gpsInfo.longitude = longitude*pow(10,6);
+				//s_gpsInfo.longitude = 120.34353*pow(10,6);
+				//log_i("lo:%d",s_gpsInfo.longitude); 
+				}
+				break;
+			case 6:
+				s_gpsInfo.EW = p[0];
+				break;
+			case 7:
+				s_gpsInfo.speed = (int)((atof(p)*10)/0.539957);
+				break;
+			case 8:
+				s_gpsInfo.direction = (int)atof(p);
+				break;
+			case 9:
+				memcpy((char*)timestr, p, 2);
+				_tm.tm_mday = atoi(timestr);
+				memcpy((char*)timestr, p+2, 2);
+				_tm.tm_mon = atoi(timestr)-1;
+				memcpy((char*)timestr, p+4, 2);
+				_tm.tm_year = atoi(timestr)+100;
+				break;
+			default:
+				break;
+		}
+	}
+
+	time2bcd(mktime(&_tm)+8*60*60, s_gpsInfo.gpsTime);
+	sendneedArgUnlock((char*)&s_gpsInfo);
+
+}
+
+static void gps_unGGA(uint8_t *buf)
+{
+	int i =0;
+	char* p=NULL;
+
+	sendneedArgLock((char*)&s_gpsInfo);
+	for(p=strtok((char*)buf, GPS_DELIM); p!=NULL; p=strtok(NULL, GPS_DELIM),i++)
+	{
+		switch(i)
+		{
+			case 9:
+				{
+					int height = (int)atof(p);
+					if(height < 0)
+					{
+						height = 0;
+					}
+
+					s_gpsInfo.height = height;
+				}
+				break;
+		}
+	}
+	sendneedArgUnlock((char*)&s_gpsInfo);
+}
+
+static bool gps_read(void)
+{
+	bool getStart = false;
+	s_readbufLen = 0;
+
+	while(1)
+	{
+		s_readbufLen = read(s_gps_fd ,s_readbuf, MAX_GPSREADSIZE);
+		if(s_readbuf[0] == '$' && s_readbuf[s_readbufLen-1] == '\n')
+		{
+			return true;
+		}
+		else
+		{
+			return false;
+		}
+
+	}
+	return true;
+}
+
+void gps_getInfo(void)
+{
+	static uint8_t count =0;
+
+	if(gps_read())
+	{
+		s_readbuf[s_readbufLen-1] = '\0';
+		if(strncmp((char*)s_readbuf+3, "GGA", 3) == 0)
+		{
+			log_d("getGps:%s",s_readbuf);
+			gps_unGGA(s_readbuf);
+			count++;
+		}
+		else if(strncmp((char*)s_readbuf+3, "RMC", 3) == 0)
+		{
+			log_d("getGps:%s",s_readbuf);
+			gps_unRMC(s_readbuf);
+		}
+		if(count >= GPS_REPORTTIME)
+		{
+			count = 0;
+			if(g_loginSuccess)
+			{
+				sendneedSetCmd(TERMINAL_GPS_CMD);
+			}
+		}
+	}
+}
+

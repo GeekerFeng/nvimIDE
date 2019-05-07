@@ -1,0 +1,58 @@
+#ifndef SENDNEED_H
+#define SENDNEED_H
+
+#include <stdbool.h>
+#include <stdint.h>
+#include <time.h>
+#include <pthread.h>
+struct needArg{
+	uint16_t cmd;
+	bool need;
+	time_t lastTime;
+	uint8_t sendCount;
+	char* arg;  //sendfun 与外部交互的接口
+	uint16_t len;
+	pthread_mutex_t mtx;
+};
+
+typedef struct{
+	struct needArg Register;
+	struct needArg Auth;
+	struct needArg Version;
+	struct needArg Gps;
+	struct needArg People;
+	struct needArg Photo;
+	struct needArg Media;
+	struct needArg GetTxt;
+	struct needArg GetIP;
+	struct needArg Universal;
+	struct needArg UpdateTrans;
+	struct needArg UpdateEnd;
+}needCmdStu;
+
+
+bool sendneedRegisterCmd(time_t now);
+bool sendneedAuthCmd(time_t now);
+bool sendneedVersionCmd(time_t now);
+bool sendneedGpsCmd(time_t now);
+bool sendneedPeopleCmd(time_t now);
+bool sendneedPhotoRes(time_t now);
+bool sendneedMediaCmd(time_t now);
+bool sendneedGetTxtRes(time_t now);
+bool sendneedGetIPCmd(time_t now);
+bool sendneedUniversalCmd(time_t now);
+bool sendneedUpdateTransCmd(time_t now);
+bool sendneedUpdateEndCmd(time_t now);
+
+
+bool sendneedClearCmd(uint16_t cmd);
+bool sendneedSetCmd(uint16_t cmd);
+bool sendneedSetCmdArg(uint16_t cmd, uint8_t* ptr, uint16_t len);
+uint16_t sendneedGetCmdArg(uint16_t cmd, uint8_t **out_ptr);
+void sendneedClearCmdArg(uint16_t cmd);
+bool sendneedSemBlock(void);
+bool sendneedArgLock(char* arg);
+bool sendneedArgUnlock(char* arg);
+
+void sendneedInit(void);
+#endif

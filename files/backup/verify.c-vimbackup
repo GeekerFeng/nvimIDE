@@ -1,0 +1,15 @@
+#include "verify.h"
+
+//计算校验码
+uint8_t checkSum(uint8_t* buff,int length)
+{
+	int i;
+	uint8_t sum = 0;
+
+	for (i = 0; i < length; i++)
+	{
+		sum ^= buff[i];
+	}
+
+	return sum;
+}

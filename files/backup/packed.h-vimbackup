@@ -1,0 +1,7 @@
+#ifndef PACKED_H
+#define PACKER_H
+
+#include <stdint.h>
+
+uint16_t packed(uint16_t id, uint8_t *buf, uint16_t *len, uint16_t packAllNum, uint16_t packNum);
+#endif

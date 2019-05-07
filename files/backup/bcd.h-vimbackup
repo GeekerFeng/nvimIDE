@@ -1,0 +1,10 @@
+#ifndef BCD_H
+#define BCD_H
+
+unsigned char BCD2HEX(unsigned char bcd_data);
+unsigned char HEX2BCD(unsigned char hex_data);
+
+void bcd2time(time_t* out_timeval, uint8_t in_bcd_time[6]);
+void time2bcd(time_t in_timeval, uint8_t out_bcd_time[6]);
+
+#endif

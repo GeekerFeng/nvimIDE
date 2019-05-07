@@ -1,0 +1,15 @@
+#ifndef IOCTL_CMD_H
+#define IOCTL_CMD_H
+
+#define CTRL_MAGIC                      't'
+#define CTRL_ON_ALL_CMD				_IOW(CTRL_MAGIC, 0x00, int)
+#define CTRL_OFF_ALL_CMD			_IOW(CTRL_MAGIC, 0xff, int)
+#define CTRL_ENABLE_CAMMERA_CMD		_IOW(CTRL_MAGIC, 0x01, int)
+#define CTRL_DISABLE_CAMMERA_CMD	_IOW(CTRL_MAGIC, 0x02, int)
+#define CTRL_RESET_GPS_CMD			_IOW(CTRL_MAGIC, 0x03, int)
+
+#define CTRL_ACC_INTTIME_CMD		_IOW(CTRL_MAGIC, 0x04, int)
+#define CTRL_DOOR_INTTIME_CMD		_IOW(CTRL_MAGIC, 0x05, int)
+#define CTRL_SIMCH_INTTIME_CMD		_IOW(CTRL_MAGIC, 0x06, int)
+
+#endif

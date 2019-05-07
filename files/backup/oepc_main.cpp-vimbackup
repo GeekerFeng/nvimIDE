@@ -1,0 +1,527 @@
+// This project is powered by tencent ncnn.
+
+// Author: Peng Jin
+// Contact: 871461071 at qq.com
+// Organization: www.oetlink.com
+
+
+// Version: omit...
+
+// Version: 0.21
+// Date: 2018/12/11
+// Description: change from ncnn to Tengine and add head-track-dot
+
+// Version: omit...
+
+// Version: 0.5
+// Date: 2019/3/27
+// Description: change from Tengine count_version 0.43 to ncnn, two thread, image detect
+
+// Version: 0.51
+// Date: 2019/3/29
+// Description: video detect
+
+// Version: 0.52
+// Date: 2019/3/29
+// Description: passenger count
+
+// Version: 0.53
+// Date: 2019/4/3
+// Description: add time test
+
+// Version: 0.54
+// Date: 2019/4/10
+// Description: add ncnn::allocator and ncnn::option
+
+
+#include <stdio.h>
+#include <vector>
+#include <unistd.h>
+#include <iostream>
+#include <sstream>
+#include <fstream>
+#include <iomanip>
+#include <string>
+#include <sys/time.h>
+#include <time.h>
+#include <thread>
+#include <memory>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+
+#include "platform.h"
+#include "net.h"
+#include "cpu.h"
+
+#include "count.h"
+
+#include <pthread.h>
+#include <sys/shm.h>
+#include "oepc_main.h"
+#include "../include/sem.h"
+
+
+std::mutex mtx_show;
+std::mutex mtx_get[2];
+std::condition_variable condv[2];
+bool ready[2], process[2]; //条件
+static cv::Mat g_image[2];
+
+
+static int get_thread(int thread_id, RecognitionStu *recognition_shm,  std::string window_name)
+{
+	int total_frame = 0;
+	int frame_cout = 100;			//100 is about 5 seconds, time to cout a piece of information
+	struct timeval t2, t3;
+	float trans_total_time =0;			//calculate time
+	float trans_run_time;
+	float avg_time;
+	float trans_min_time=1000;
+	float trans_max_time =-1;
+	cv::Mat image;
+
+	RecognitionStu recognition;
+	int cpus =0;
+	cpu_set_t mask;
+    cpu_set_t get;
+
+    cpus = sysconf(_SC_NPROCESSORS_CONF);
+    printf("this system has %d processor(s)\n", cpus);
+    
+    CPU_ZERO(&mask);
+    CPU_SET(0, &mask);
+    CPU_SET(1, &mask);
+
+    /* 设置cpu 亲和性(affinity)*/
+    if (pthread_setaffinity_np(pthread_self(), sizeof(mask), &mask) < 0) {
+        fprintf(stderr, "set thread affinity failed\n");
+    }   
+    
+    /* 查看cpu 亲和性(affinity)*/
+    CPU_ZERO(&get);
+    if (pthread_getaffinity_np(pthread_self(), sizeof(get), &get) < 0) {
+        fprintf(stderr, "get thread affinity failed\n");
+    }   
+
+    /* 查看当前线程所运行的所有cpu*/
+    for (int i = 0; i < cpus; i++) {
+        if (CPU_ISSET(i, &get)) {
+            printf("this thread %d is running in processor %d\n", (int)pthread_self(), i); 
+        }   
+    }
+
+
+	cv::VideoWriter writer(VIDEO_PATH+window_name+".avi", CV_FOURCC('M', 'J', 'P', 'G'), 60.0, cv::Size(IMAGE_WIDTH, IMAGE_HEIGHT));
+	std::cout << VIDEO_PATH+window_name+".avi\n";
+
+	while(1)
+	{
+			gettimeofday(&t2, NULL);
+		//sem_p(recognition_shm->semid);
+		if(recognition_shm->imagelen == 0)
+		{
+			//std::cout << "buf empty\n";
+			usleep(1000);
+			continue;
+		}
+		total_frame++;
+
+		{ //trans
+			pthread_mutex_lock(&recognition_shm->shareMtx);
+
+			memcpy(recognition.imagebuf, recognition_shm->imagebuf, recognition_shm->imagelen);
+			recognition.imagelen = recognition_shm->imagelen;
+
+			recognition_shm->imagelen = 0; //加载下一幅图片
+
+			pthread_mutex_unlock(&recognition_shm->shareMtx);
+
+			cv::_InputArray pic_arr_1(recognition.imagebuf, recognition.imagelen);
+			//image = cv::imdecode(pic_arr_1, CV_LOAD_IMAGE_COLOR);
+
+			image = cv::imdecode(pic_arr_1, cv::IMREAD_COLOR);
+
+			std::unique_lock<std::mutex> lock(mtx_get[thread_id]);
+			g_image[thread_id] = image;
+			//ready[thread_id] = true;
+			//std::cout << "send ready:"<<thread_id<<"\n";
+			//condv[thread_id].notify_one();
+
+			//bool res = process[thread_id];
+			//std::cout << "wait process:"<<thread_id<<"\n";
+			//condv[thread_id].wait(lock, [res] { return res;});
+			//process[thread_id] = false;
+
+		}
+			writer << image;
+
+			gettimeofday(&t3, NULL);
+		trans_run_time = (float)((t3.tv_sec * 1000000 + t3.tv_usec) - (t2.tv_sec * 1000000 + t2.tv_usec)) / 1000;
+		if (trans_run_time > trans_max_time){ trans_max_time = trans_run_time; }
+		if (trans_run_time < trans_min_time){ trans_min_time = trans_run_time; }
+		trans_total_time += trans_run_time;
+		//time-end--------------------------------------------------------------
+
+		if (0 == total_frame % frame_cout)
+		{
+			avg_time = trans_total_time / frame_cout;
+			std::cout << window_name << " " << total_frame - frame_cout << "~" << total_frame << " frame,";
+			std::cout << "  trans avg: " << avg_time << "ms, " << "max: " << trans_max_time << "ms, " << "min: " << trans_min_time << "ms\n";
+			trans_total_time = 0;
+			trans_max_time = -1;
+			trans_min_time = 1000;
+		}
+	}
+}
+
+static int run_thread(int thread_id, RecognitionStu *recognition_shm, bool if_save_video, bool if_show_image, std::string window_name)
+{
+	Count counter;
+
+	cv::Mat image;
+
+	std::vector<Object> objects;
+	ncnn::Net net;
+	ncnn::Mat in;
+	ncnn::Mat out;
+	const int target_size = 300;
+	int img_w = IMAGE_WIDTH;//image.cols;
+	int img_h = IMAGE_HEIGHT;//image.rows;
+	const float mean_vals[3] = { 127.5f, 127.5f, 127.5f };
+	const float norm_vals[3] = { 1.0 / 127.5, 1.0 / 127.5, 1.0 / 127.5 };
+	static const char* class_names[] = { "background", "head", "head2", "head3", "head4" };
+
+	net.load_param("oepc.param");
+	net.load_model("oepc.bin");
+
+
+	int total_frame = 0;
+	int frame_cout = 100;			//100 is about 5 seconds, time to cout a piece of information
+	struct timeval t0, t1;
+	float total_time,trans_total_time =0;			//calculate time
+	float this_run_time,trans_run_time;
+	float avg_time;
+	float min_time = 1000, trans_min_time=1000;
+	float max_time = -1, trans_max_time =-1;
+
+
+
+	//static ncnn::UnlockedPoolAllocator g_blob_pool_allocator;  //multi-thread error
+	//static ncnn::PoolAllocator g_workspace_pool_allocator;     //multi-thread error
+	//g_blob_pool_allocator.set_size_compare_ratio(0.0f);        //multi-thread error
+	//g_workspace_pool_allocator.set_size_compare_ratio(0.5f);   //multi-thread error
+
+
+	int num_threads;
+	int powersave;    //0:all cores, 1:small cores, 2:big cores
+
+	if (0 == thread_id)
+	{
+		num_threads = 1;
+		powersave = 2;
+	}
+	if (1 == thread_id)
+	{
+		num_threads = 1;
+		powersave = 2;
+	}
+
+
+
+	ncnn::Option opt;
+	opt.lightmode = true;
+	opt.num_threads = num_threads;
+	//opt.blob_allocator = &g_blob_pool_allocator;             //multi-thread error
+	//opt.workspace_allocator = &g_workspace_pool_allocator;   //multi-thread error
+
+	ncnn::set_default_option(opt);
+	ncnn::set_cpu_powersave(powersave);
+	ncnn::set_omp_dynamic(0);
+	ncnn::set_omp_num_threads(num_threads);
+
+	//g_blob_pool_allocator.clear();          //multi-thread error
+	//g_workspace_pool_allocator.clear();     //multi-thread error
+
+	{
+		int cpus;
+		cpu_set_t mask;
+		cpu_set_t get;
+
+    	cpus = sysconf(_SC_NPROCESSORS_CONF);
+    	printf("this system has %d processor(s)\n", cpus);
+    	
+    	//CPU_ZERO(&mask);
+    	//CPU_SET(thread_id+4, &mask);
+
+    	///* 设置cpu 亲和性(affinity)*/
+    	//if (pthread_setaffinity_np(pthread_self(), sizeof(mask), &mask) < 0) {
+    	//    fprintf(stderr, "set thread affinity failed\n");
+    	//}   
+    	
+    	/* 查看cpu 亲和性(affinity)*/
+    	CPU_ZERO(&get);
+    	if (pthread_getaffinity_np(pthread_self(), sizeof(get), &get) < 0) {
+    	    fprintf(stderr, "get thread affinity failed\n");
+    	}   
+
+    	/* 查看当前线程所运行的所有cpu*/
+    	for (int i = 0; i < cpus; i++) {
+    	    if (CPU_ISSET(i, &get)) {
+    	        printf("this thread %d is running in processor %d\n", (int)pthread_self(), i); 
+    	    }   
+    	}
+	}
+	std::cout << window_name << "    num_threads = " << num_threads << "      powersave = " << ncnn::get_cpu_powersave() << "\n";
+	
+	while (1)
+	{
+		//time-begin------------------------------------------------------------
+		gettimeofday(&t0, NULL);
+		//time-begin------------------------------------------------------------
+
+		{
+			std::unique_lock<std::mutex> lock(mtx_get[thread_id]);
+			//bool res = ready[thread_id];
+			//std::cout << "wait ready:"<<thread_id<<"\n";
+			//condv[thread_id].wait(lock, [res] { return res;});
+			//ready[thread_id] = false;
+
+			image = g_image[thread_id];
+			//process[thread_id] = true;
+		}
+		//std::cout << "send process:"<<thread_id<<"\n";
+		//condv[thread_id].notify_one();
+
+		total_frame++;
+
+		if (image.empty())
+		{
+			std::cout << "video end\n";
+			break;
+		}
+
+		/////////////////////////////////extract_objects////////////////////////////////////////
+
+
+		ncnn::Extractor ex = net.create_extractor();
+		in = ncnn::Mat::from_pixels_resize(image.data, ncnn::Mat::PIXEL_BGR, img_w, img_h, target_size, target_size);
+		in.substract_mean_normalize(mean_vals, norm_vals);
+		ex.input("data", in);
+		ex.extract("detection_out", out);
+
+
+		objects.clear();
+		for (int i = 0; i<out.h; i++)
+		{
+			const float* values = out.row(i);
+
+			Object object;
+			object.label = values[0];
+			object.prob = values[1];
+			object.left_top_x = values[2] * img_w;
+			object.left_top_y = values[3] * img_h;
+			object.right_bottom_x = values[4] * img_w;
+			object.right_bottom_y = values[5] * img_h;
+			object.width = object.right_bottom_x - object.left_top_x;
+			object.height = object.right_bottom_y - object.left_top_y;
+			object.center_x = (object.right_bottom_x + object.left_top_x) / 2.0;
+			object.center_y = (object.right_bottom_y + object.left_top_y) / 2.0;
+			if (object.width > object.width)
+				object.radius = object.width / 2.0;
+			else
+				object.radius = object.height / 2.0;
+
+			objects.push_back(object);
+		}
+
+		/////////////////////////////////extract_objects////////////////////////////////////////
+
+
+
+		/////////////////////////////////post_process///////////////////////////////////////////
+
+		counter.passenger_count(objects);		//match and track
+
+		if (counter.people_change)
+		{
+			pthread_mutex_lock(&recognition_shm->shareMtx);
+			recognition_shm->people_change = true;
+			recognition_shm->in_total = counter.in_total;
+			recognition_shm->out_total = counter.out_total;
+			pthread_mutex_unlock(&recognition_shm->shareMtx);
+
+			std::cout << window_name << "   in: " << counter.in_total << "   out: " << counter.out_total << "\n";
+		}
+
+		if (if_show_image)
+		{
+			/////////////////////////////////////////////////1:box and class/////////////////
+
+			for (size_t i = 0; i < objects.size(); i++)
+			{
+				const Object& obj = objects[i];
+
+				//fprintf(stderr, "%d = %.5f at %.2f %.2f %.2f x %.2f\n", obj.label, obj.prob, obj.rect.x, obj.rect.y, obj.rect.width, obj.rect.height);
+
+				cv::rectangle(image, cv::Rect(obj.left_top_x, obj.left_top_y, obj.width, obj.height), cv::Scalar(255, 255, 0), 2);
+
+				char text[256];
+				sprintf(text, "%s %.1f%%", class_names[obj.label], obj.prob * 100);
+
+				int baseLine = 0;
+				cv::Size label_size = cv::getTextSize(text, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
+
+				int x = obj.left_top_x;
+				int y = obj.left_top_y - label_size.height - baseLine;
+				if (y < 0) y = 0;
+				if (x + label_size.width > img_w) x = img_w - label_size.width;
+
+				cv::rectangle(image, cv::Rect(cv::Point(x, y), cv::Size(label_size.width, label_size.height + baseLine)), cv::Scalar(255, 255, 255), -1);
+
+				cv::putText(image, text, cv::Point(x, y + label_size.height), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0));
+			}
+
+			/////////////////////////////////////////////////1:box and class/////////////////
+
+
+
+			/////////////////////////////////////////////////2:tracks////////////////////////
+
+			for (auto each_track : counter.tracks)
+			{
+				Object pre_head = each_track.heads_in_this_track.front();
+
+				for (auto each_head : each_track.heads_in_this_track)
+				{
+					if (2 == each_track.track_type)		//valid tracks
+					{
+						cv::line(image, cv::Point(each_head.center_x, each_head.center_y), cv::Point(pre_head.center_x, pre_head.center_y), cv::Scalar(0, 255, 255), 10);
+						cv::circle(image, cv::Point(each_head.center_x, each_head.center_y), 10, cv::Scalar(0, 255, 255), -1);
+					}
+					else if (3 == each_track.track_type)	//invalid tracks
+					{
+						cv::line(image, cv::Point(each_head.center_x, each_head.center_y), cv::Point(pre_head.center_x, pre_head.center_y), cv::Scalar(100, 0, 0), 10);
+						cv::circle(image, cv::Point(each_head.center_x, each_head.center_y), 10, cv::Scalar(100, 0, 0), -1);
+					}
+					else if (1 == each_track.track_type)	//matching tracks
+					{
+						cv::line(image, cv::Point(each_head.center_x, each_head.center_y), cv::Point(pre_head.center_x, pre_head.center_y), cv::Scalar(0, 0, 255), 2);
+						cv::circle(image, cv::Point(each_head.center_x, each_head.center_y), 5, cv::Scalar(0, 255, 0), -1);
+					}
+
+					pre_head = each_head;
+				}
+			}
+
+			/////////////////////////////////////////////////2:tracks////////////////////////
+
+
+
+			/////////////////////////////////////////////////3:in and out people/////////////
+
+			std::string in = "in:" + std::to_string(counter.in_total);
+			std::string out = "out:" + std::to_string(counter.out_total);
+			cv::rectangle(image, cv::Rect(cv::Point(20, img_h - 95), cv::Size(140, 80)), cv::Scalar(0, 0, 0), -1);
+			cv::putText(image, in, cv::Point(30, img_h - 60), cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(255, 255, 255), 2);
+			cv::putText(image, out, cv::Point(30, img_h - 30), cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(255, 255, 255), 2);
+
+			/////////////////////////////////////////////////3:in and out people/////////////
+
+			mtx_show.lock();
+			cv::imshow(window_name, image);
+			cv::waitKey(1);
+			mtx_show.unlock();
+		}
+
+		/////////////////////////////////post_process///////////////////////////////////////////
+
+
+
+		//time-end--------------------------------------------------------------
+		gettimeofday(&t1, NULL);
+		this_run_time = (float)((t1.tv_sec * 1000000 + t1.tv_usec) - (t0.tv_sec * 1000000 + t0.tv_usec)) / 1000;
+		if (this_run_time > max_time){ max_time = this_run_time; }
+		if (this_run_time < min_time){ min_time = this_run_time; }
+		total_time += this_run_time;
+		//time-end--------------------------------------------------------------
+
+		if (0 == total_frame % frame_cout)
+		{
+			avg_time = total_time / frame_cout;
+			std::cout << window_name << " " << total_frame - frame_cout << "~" << total_frame << " frame,";
+			std::cout << "  avg: " << avg_time << "ms, " << "max: " << max_time << "ms, " << "min: " << min_time << "ms\n";
+			total_time = 0;
+			max_time = -1;
+			min_time = 1000;
+		}
+	}
+
+	return 0;
+}
+
+
+
+int oepc_main(RecognitionStu *shm)
+{
+	bool if_show_image = false;
+	bool if_save_video = false;
+	std::string window_name_1 = "output_1";
+	std::string window_name_2 = "output_2";
+
+	//RecognitionStu *shm;
+	//key_t shm_key;
+	//{
+	//	char buf[20];
+	//	int key_fd = open(
+	//}
+
+	//key_t id = (key_t)atoi(argc[1]);
+	//int shm_id;
+
+	//if((shm_id = shmget(id, MEM_SIZE, 0666)) == -1){
+	//	std::cout<<"shmget error:"<<strerror(errno)<<"\n";
+	//	exit(-1);
+	//}
+	//shm = (RecognitionStu*)shmat(shm_id, NULL, 0);
+	//if(shm == (void*)-1){
+	//	std::cout<<"shmat error:"<<strerror(errno)<<"\n";
+	//	exit(-1);
+	//}
+
+	//memset((char*)shm, 0, MEM_SIZE);
+
+	std::thread *thread_1 = new std::thread(get_thread, 0, &shm[0], window_name_1);
+	std::thread *thread_2 = new std::thread(get_thread, 1, &shm[1], window_name_2);
+
+	sleep(5);
+	std::thread *thread_3 = new std::thread(run_thread, 0, &shm[0], if_save_video, if_show_image, window_name_1);
+	std::thread *thread_4 = new std::thread(run_thread, 1, &shm[1], if_save_video, if_show_image, window_name_2);
+
+	thread_1->join();
+	thread_2->join();
+	thread_3->join();
+	thread_4->join();
+
+	delete thread_1;
+	delete thread_2;
+	delete thread_3;
+	delete thread_4;
+
+	return 0;
+}
+
+
+
+
+
+
+
+
+
+
+
+
