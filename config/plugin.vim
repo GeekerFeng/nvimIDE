@@ -13,7 +13,9 @@ nmap hi IH
 "yum install -y global-ctags
 set tags=./.tags;,.tags
 let $GTAGSLABEL = 'pygments'
-let $GTAGSCONF = '/etc/gtags.conf'
+"let $GTAGSCONF = '/etc/gtags.conf'
+let $GTAGSCONF = '/usr/share/gtags/gtags.conf'
+
 
 " gutentags 搜索工程目录的标志，当前文件路径向上递归直到碰到这些文件/目录名
 let g:gutentags_project_root = ['.svn','.git','.root','MAINTAINERS', 'COPYING','.project']

@@ -69,6 +69,7 @@ set matchtime=2
 
 " 开启行号显示
 set number
+set relativenumber
 " 高亮显示当前行/列
 set cursorline
 set cursorcolumn

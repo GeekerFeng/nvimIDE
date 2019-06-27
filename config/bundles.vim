@@ -91,7 +91,7 @@ Plug 'Shougo/echodoc.vim'
 
 
 " 异步执行插件
-"Plug 'skywind3000/asyncrun.vim'
+Plug 'skywind3000/asyncrun.vim'
 
 """""""""""""""""""""""""""""""""""""""""""""""""
 """"""""""""""" 代码染色配置插件 """"""""""""""""
