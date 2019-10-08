@@ -75,8 +75,8 @@ set cursorline
 set cursorcolumn
 " 高亮显示搜索结果
 set hlsearch
-" 不自动换行
-set nowrap
+" 自动换行
+set wrap
 " 终端滚动时时刻保留n行在界面中
 set scrolloff=25
 
@@ -91,9 +91,10 @@ set scrolloff=25
 
 " 基于缩进或语法进行代码折叠
 "set foldmethod=indent
-"set foldmethod=syntax
+set foldmethod=syntax
+set foldlevelstart=99 "打开文件默认不折叠
 " 启动 vim 时关闭折叠代码
-set nofoldenable
+"set nofoldenable
 
 " 默认收缩设置
 set noautoindent
@@ -101,7 +102,7 @@ set nosmartindent
 set tabstop=4
 set softtabstop=4
 set shiftwidth=4
-set textwidth=80
+"set textwidth=80
 set nosmarttab
 "set expandtab
 

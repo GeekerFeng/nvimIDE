@@ -9,7 +9,7 @@ nmap LB 0
 nmap LE $
 
 " 定义git grep 快捷键
-cnoreabbrev grep !git grep
+cnoreabbrev grep !grep -nr
 
 " vim文本选择
 " v : 按照字符选择
@@ -57,3 +57,6 @@ endfunction
 
 "NERDTREE
 nnoremap <F5> :NERDTreeToggle<CR>
+
+"foldmethod
+nnoremap <space> @=((foldclosed(line('.')) < 0) ? 'zc' : 'zo')<CR>
