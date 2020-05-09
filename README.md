@@ -1,5 +1,8 @@
 ```shell
-sudo apt-get install ctags cscope git
+sudo apt-get install cscope git global
+sudo add-apt-repository ppa:extk/chyla.org-repository-for-ubuntu-18.04
+sudo apt-get update
+sudo apt install universal-ctags
 mv ~/.vim ~/.vim.orig
 mv ~/.vimrc ~/.vimrc.orig
 git clone https://github.com/hkurj/c-c-vimIDE.git ~/.vim
