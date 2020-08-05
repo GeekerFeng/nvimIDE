@@ -4,7 +4,7 @@ call plug#begin('~/.vim/plugged')
 """"""""""""""" IDE 界面配置插件 """"""""""""""""
 """""""""""""""""""""""""""""""""""""""""""""""""
 " 目录进退
-"Plug 'justinmk/vim-dirvish'
+Plug 'justinmk/vim-dirvish'
 
 " 底层状态条
 Plug 'itchyny/lightline.vim'
@@ -13,25 +13,23 @@ Plug 'itchyny/lightline.vim'
 Plug 'bronson/vim-trailing-whitespace'
 
 " Git命令行
-"Plug 'tpope/vim-fugitive'
+Plug 'tpope/vim-fugitive'
 
 " vim列对齐线
-"Plug 'Yggdroot/indentLine'
+Plug 'Yggdroot/indentLine'
 
 "切换当前terminal和vim的鼠标焦点，F12
-"Plug 'nvie/vim-togglemouse'
+Plug 'nvie/vim-togglemouse'
 
 "unimpaired 插件定义括号开头的快捷键，官方 Vim 中丢失的快捷键
-"Plug 'tpope/vim-unimpaired'
+Plug 'tpope/vim-unimpaired'
 
 "NERDTREE
 Plug 'scrooloose/nerdtree'
 
-"taglist
-"Plug 'vim-scripts/taglist.vim'
-
 "主题
 Plug 'morhetz/gruvbox'
+
 """""""""""""""""""""""""""""""""""""""""""""""""
 """"""""""""""" 代码搜索配置插件 """"""""""""""""
 """""""""""""""""""""""""""""""""""""""""""""""""
@@ -46,42 +44,43 @@ Plug 'skywind3000/gutentags_plus'
 Plug 'tczengming/autoload_cscope.vim'
 
 "搜索栏预览
-"Plug 'skywind3000/vim-preview'
+Plug 'skywind3000/vim-preview'
 
 """""""""""""""""""""""""""""""""""""""""""""""""
 """"""""""""""" 代码格式配置插件 """"""""""""""""
 """""""""""""""""""""""""""""""""""""""""""""""""
 
 " 代码快速对齐
-"Plug 'junegunn/vim-easy-align'
+Plug 'junegunn/vim-easy-align'
 
 " 自动进行tab2space转换
-Plug 'vim-scripts/Smart-Tabs'
+"Plug 'vim-scripts/Smart-Tabs'
+Plug 'dpc/vim-smarttabs'
 
 """""""""""""""""""""""""""""""""""""""""""""""""
 """"""""""""""" 代码编辑配置插件 """"""""""""""""
 """""""""""""""""""""""""""""""""""""""""""""""""
 " 语法检查
-"Plug 'w0rp/ale'
+Plug 'w0rp/ale'
 
 " 强化具体语言文件
-"Plug 'vim-scripts/c.vim'
-"Plug 'vim-scripts/a.vim'
+Plug 'vim-scripts/c.vim'
+Plug 'vim-scripts/a.vim'
 Plug 'octol/vim-cpp-enhanced-highlight'
-"Plug 'fatih/vim-go'
+Plug 'fatih/vim-go'
 Plug 'elzr/vim-json'
 
-"Plug 'godlygeek/tabular'
-"Plug 'plasticboy/vim-markdown'
+Plug 'godlygeek/tabular'
+Plug 'plasticboy/vim-markdown'
 
 " 撤销记录列表
-"Plug 'mbbill/undotree'
+Plug 'mbbill/undotree'
 
 " 括号补全
-"Plug 'tpope/vim-surround'
+Plug 'tpope/vim-surround'
 
 " 为buff自动创建不存在的目录
-"Plug 'pbrisbin/vim-mkdir'
+Plug 'pbrisbin/vim-mkdir'
 
 " 快速补全
 Plug 'Valloric/YouCompleteMe', {'do':'./install.py --clang-completer --go-completer'}

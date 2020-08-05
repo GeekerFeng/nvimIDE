@@ -22,7 +22,7 @@ let $GTAGSCONF = '/etc/gtags.conf'
 let g:gutentags_project_root = ['.svn','.git','.root','MAINTAINERS', 'COPYING','.project']
 
 " gutentags 调试打印
-let g:gutentags_trace = 1
+"let g:gutentags_trace = 1
 
 let g:gutentags_file_list_command = {
   \'markers': {
@@ -209,7 +209,7 @@ nnoremap <F8> :call asyncrun#quickfix_toggle(6)<cr>
 " u命令取消最近一次的操作，可以使用多次来恢复原有的操作
 " U取消所有操作
 " Ctrl+R可以恢复对使用u命令的操作
-nnoremap <Leader>ud :GundoToggle<CR>
+nnoremap <Leader>ud :UndotreeToggle<CR>
 
 " 开启保存 undo 历史功能
 set undofile
