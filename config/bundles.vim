@@ -29,6 +29,7 @@ Plug 'scrooloose/nerdtree'
 
 "主题
 Plug 'morhetz/gruvbox'
+Plug 'tamlok/detorte'
 
 """""""""""""""""""""""""""""""""""""""""""""""""
 """"""""""""""" 代码搜索配置插件 """"""""""""""""
@@ -71,7 +72,7 @@ Plug 'fatih/vim-go'
 Plug 'elzr/vim-json'
 
 Plug 'godlygeek/tabular'
-Plug 'plasticboy/vim-markdown'
+"Plug 'plasticboy/vim-markdown'
 
 " 撤销记录列表
 Plug 'mbbill/undotree'
