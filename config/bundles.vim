@@ -84,7 +84,7 @@ Plug 'tpope/vim-surround'
 Plug 'pbrisbin/vim-mkdir'
 
 " 快速补全
-Plug 'Valloric/YouCompleteMe', {'do':'./install.py --clang-completer --go-completer'}
+Plug 'Valloric/YouCompleteMe', {'do':'./install.py --clang-completer'}
 Plug 'rdnetto/YCM-Generator', { 'branch': 'stable'}
 "函数参数提示
 Plug 'Shougo/echodoc.vim'
