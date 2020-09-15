@@ -1,4 +1,4 @@
-sudo apt install cscope git global python3-pygments python3-flake8
+sudo apt install cscope git global python3-pygments python3-flake8 python3 python3-dev cmake
 sudo add-apt-repository ppa:extk/chyla.org-repository-for-ubuntu-18.04
 sudo apt update
 sudo apt install universal-ctags
