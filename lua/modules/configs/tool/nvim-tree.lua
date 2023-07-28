@@ -44,7 +44,7 @@ return function()
 			highlight_git = true,
 			full_name = false,
 			highlight_opened_files = "none",
-			special_files = { ".root" },
+			special_files = { "Cargo.toml", "Makefile", "README.md", "readme.md", "CMakeLists.txt" },
 			symlink_destination = true,
 			indent_markers = {
 				enable = true,

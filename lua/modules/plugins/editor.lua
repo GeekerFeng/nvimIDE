@@ -36,11 +36,11 @@ editor["LunarVim/bigfile.nvim"] = {
 }
 editor["ojroques/nvim-bufdel"] = {
 	lazy = true,
-	event = "BufReadPost",
+	cmd = { "BufDel", "BufDelAll", "BufDelOthers" },
 }
 editor["rhysd/clever-f.vim"] = {
 	lazy = true,
-	event = { "BufReadPost", "BufAdd", "BufNewFile" },
+	event = { "CursorHold", "CursorHoldI" },
 	config = require("editor.cleverf"),
 }
 editor["numToStr/Comment.nvim"] = {
@@ -56,10 +56,10 @@ editor["junegunn/vim-easy-align"] = {
 	lazy = true,
 	cmd = "EasyAlign",
 }
-editor["phaazon/hop.nvim"] = {
+editor["smoka7/hop.nvim"] = {
 	lazy = true,
-	branch = "v2",
-	event = "BufReadPost",
+	version = "*",
+	event = { "CursorHold", "CursorHoldI" },
 	config = require("editor.hop"),
 }
 editor["RRethy/vim-illuminate"] = {
@@ -87,14 +87,17 @@ editor["nvim-treesitter/nvim-treesitter"] = {
 			vim.api.nvim_command("TSUpdate")
 		end
 	end,
-	event = { "CursorHold", "CursorHoldI" },
+	event = "BufReadPost",
 	config = require("editor.treesitter"),
 	dependencies = {
 		{ "nvim-treesitter/nvim-treesitter-textobjects" },
-		{ "mrjones2014/nvim-ts-rainbow" },
 		{ "JoosepAlviste/nvim-ts-context-commentstring" },
 		{ "mfussenegger/nvim-treehopper" },
 		{ "andymass/vim-matchup" },
+		{
+			"hiphish/rainbow-delimiters.nvim",
+			config = require("editor.rainbow_delims"),
+		},
 		{
 			"nvim-treesitter/nvim-treesitter-context",
 			config = require("editor.ts-context"),

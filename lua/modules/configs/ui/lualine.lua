@@ -11,6 +11,7 @@ return function()
 	local function custom_theme()
 		vim.api.nvim_create_autocmd("ColorScheme", {
 			group = vim.api.nvim_create_augroup("LualineColorScheme", { clear = true }),
+			pattern = "*",
 			callback = function()
 				require("lualine").setup({ options = { theme = custom_theme() } })
 			end,
@@ -72,9 +73,13 @@ return function()
 			return vim.bo.filetype ~= ""
 		end,
 		has_git = function()
-			local filepath = vim.fn.expand("%:p:h")
-			local gitdir = vim.fn.finddir(".git", filepath .. ";")
-			return gitdir and #gitdir > 0 and #gitdir < #filepath
+			local gitdir = vim.fs.find(".git", {
+				limit = 1,
+				upward = true,
+				type = "directory",
+				path = vim.fn.expand("%:p:h"),
+			})
+			return #gitdir > 0
 		end,
 	}
 
@@ -163,7 +168,7 @@ return function()
 
 		lsp = {
 			function()
-				local buf_ft = vim.api.nvim_buf_get_option(0, "filetype")
+				local buf_ft = vim.api.nvim_get_option_value("filetype", { scope = "local" })
 				local clients = vim.lsp.get_active_clients()
 				local lsp_lists = {}
 				local available_servers = {}
@@ -201,14 +206,14 @@ return function()
 					return venv
 				end
 
-				if vim.api.nvim_buf_get_option(0, "filetype") == "python" then
+				if vim.api.nvim_get_option_value("filetype", { scope = "local" }) == "python" then
 					local venv = os.getenv("CONDA_DEFAULT_ENV")
 					if venv then
-						return string.format("%s", env_cleanup(venv))
+						return icons.misc.PyEnv .. env_cleanup(venv)
 					end
 					venv = os.getenv("VIRTUAL_ENV")
 					if venv then
-						return string.format("%s", env_cleanup(venv))
+						return icons.misc.PyEnv .. env_cleanup(venv)
 					end
 				end
 				return ""
@@ -219,7 +224,7 @@ return function()
 
 		tabwidth = {
 			function()
-				return icons.ui.Tab .. vim.api.nvim_buf_get_option(0, "shiftwidth")
+				return icons.ui.Tab .. vim.api.nvim_get_option_value("shiftwidth", { scope = "local" })
 			end,
 			padding = 1,
 		},
@@ -267,7 +272,7 @@ return function()
 					icon = { align = "left" },
 				},
 				components.file_status,
-				vim.tbl_deep_extend("force", components.separator, {
+				vim.tbl_extend("force", components.separator, {
 					cond = function()
 						return conditionals.has_git() and conditionals.has_comp_before()
 					end,
@@ -278,6 +283,7 @@ return function()
 					"branch",
 					icon = icons.git_nosep.Branch,
 					color = utils.gen_hl("subtext0", true, true, nil, "bold"),
+					cond = conditionals.has_git,
 				},
 				{
 					"diff",
@@ -289,6 +295,7 @@ return function()
 					source = diff_source,
 					colored = false,
 					color = utils.gen_hl("subtext0", true, true),
+					cond = conditionals.has_git,
 					padding = { right = 1 },
 				},
 

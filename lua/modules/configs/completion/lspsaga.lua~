@@ -180,7 +180,7 @@ return function()
 			collapse = icons.ui.ArrowOpen,
 			code_action = icons.ui.CodeAction,
 			actionfix = icons.ui.Spell,
-			lines = { "‚îó", "‚î£", "‚îÉ", "‚îÅ", "‚îè" },
+			lines = { "©ª", "©«", "©ß", "©•", "©≥" },
 			imp_sign = icons.kind.Implementation,
 			kind = {
 				-- Kind
