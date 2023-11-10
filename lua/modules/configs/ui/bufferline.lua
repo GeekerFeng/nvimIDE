@@ -16,7 +16,7 @@ return function()
 			show_buffer_close_icons = true,
 			show_close_icon = true,
 			show_tab_indicators = true,
-			enforce_regular_tabs = true,
+			enforce_regular_tabs = false,
 			persist_buffer_sort = true,
 			always_show_bufferline = true,
 			separator_style = "thin",
@@ -32,8 +32,8 @@ return function()
 					padding = 0,
 				},
 				{
-					filetype = "lspsagaoutline",
-					text = "Lspsaga Outline",
+					filetype = "Outline",
+					text = "Symbol Outline",
 					text_align = "center",
 					padding = 0,
 				},
@@ -67,5 +67,5 @@ return function()
 		opts = vim.tbl_deep_extend("force", opts, catppuccin_hl_overwrite)
 	end
 
-	require("bufferline").setup(opts)
+	require("modules.utils").load_plugin("bufferline", opts)
 end

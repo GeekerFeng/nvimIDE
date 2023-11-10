@@ -1,1 +1,1 @@
-return { "-style={BasedOnStyle: LLVM, IndentWidth: 4, ColumnLimit: 120}" }
+return { "-style={BasedOnStyle: LLVM, IndentWidth: 4}" }
