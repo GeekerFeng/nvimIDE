@@ -4,6 +4,8 @@ return function()
 	local opts = {
 		options = {
 			number = nil,
+			close_command = "BufDel! %d",
+			right_mouse_command = "BufDel! %d",
 			modified_icon = icons.ui.Modified,
 			buffer_close_icon = icons.ui.Close,
 			left_trunc_marker = icons.ui.Left,
@@ -32,7 +34,7 @@ return function()
 					padding = 0,
 				},
 				{
-					filetype = "Outline",
+					filetype = "aerial",
 					text = "Symbol Outline",
 					text_align = "center",
 					padding = 0,

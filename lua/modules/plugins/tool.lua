@@ -32,7 +32,7 @@ tool["michaelb/sniprun"] = {
 	-- You need to cd to `~/.local/share/nvim/site/lazy/sniprun/` and execute `bash ./install.sh`,
 	-- if you encountered error about no executable sniprun found.
 	build = "bash ./install.sh",
-	cmd = "SnipRun",
+	cmd = { "SnipRun", "SnipReset", "SnipInfo" },
 	config = require("tool.sniprun"),
 }
 tool["akinsho/toggleterm.nvim"] = {
@@ -56,12 +56,6 @@ tool["folke/which-key.nvim"] = {
 	lazy = true,
 	event = { "CursorHold", "CursorHoldI" },
 	config = require("tool.which-key"),
-}
-tool["gelguy/wilder.nvim"] = {
-	lazy = true,
-	event = "CmdlineEnter",
-	config = require("tool.wilder"),
-	dependencies = { "romgrk/fzy-lua-native" },
 }
 
 ----------------------------------------------------------------------
@@ -108,6 +102,9 @@ tool["mfussenegger/nvim-dap"] = {
 		{
 			"rcarriga/nvim-dap-ui",
 			config = require("tool.dap.dapui"),
+			dependencies = {
+				"nvim-neotest/nvim-nio",
+			},
 		},
 		{ "jay-babu/mason-nvim-dap.nvim" },
 	},

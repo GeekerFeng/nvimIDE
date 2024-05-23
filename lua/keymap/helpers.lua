@@ -11,6 +11,17 @@ _G._command_panel = function()
 	})
 end
 
+_G._flash_esc_or_noh = function()
+	local flash_active, state = pcall(function()
+		return require("flash.plugins.char").state
+	end)
+	if flash_active and state then
+		state:hide()
+	else
+		pcall(vim.cmd.noh)
+	end
+end
+
 local _lazygit = nil
 _G._toggle_lazygit = function()
 	if vim.fn.executable("lazygit") == 1 then
@@ -26,4 +37,16 @@ _G._toggle_lazygit = function()
 	else
 		vim.notify("Command [lazygit] not found!", vim.log.levels.ERROR, { title = "toggleterm.nvim" })
 	end
+end
+
+_G._buf_vtext = function()
+	local a_orig = vim.fn.getreg("a")
+	local mode = vim.fn.mode()
+	if mode ~= "v" and mode ~= "V" then
+		vim.cmd([[normal! gv]])
+	end
+	vim.cmd([[silent! normal! "aygv]])
+	local text = vim.fn.getreg("a")
+	vim.fn.setreg("a", a_orig)
+	return text
 end
