@@ -54,6 +54,8 @@ return function(options)
 					"clang",
 					"gcc",
 					"g++",
+					"aarch64-linux-gnu-gcc",
+					"aarch64-linux-gnu-g++",
 					"/opt/tools/rootfs/TDA4VH/rtos_sdk_j784s4_0806/ti-cgt-armllvm_1.3.0.LTS/bin/tiarmclang",
 					"/opt/tools/rootfs/TDA4VH/rtos_sdk_j784s4_0806/ti-cgt-c7000_3.1.0.LTS/bin/cl7x",
 					"/opt/tools/rootfs/TDA4VH/rtos_sdk_j784s4_0806/gcc-arm-9.2-2019.12-x86_64-aarch64-none-linux-gnu/bin/aarch64-none-linux-gnu-gcc",
